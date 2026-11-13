@@ -1,0 +1,54 @@
+// HSN 10 — cache de arquivos estáticos. Nunca cacheia Supabase, Auth, CDN ou anexos.
+const PREFIX="hsn-clone-v2:"+self.registration.scope+":";
+const CACHE=PREFIX+"1";
+const STATIC=["./", "./index.html", "manifest.json", "icons/icon-192.png", "js/theme.js", "css/hsn89-optimized.css?v=8-9-2-20261022", "css/hsn90-modules.css?v=9-5-2-20261110", "css/hsn91-duplicates.css?v=9-1-20261026", "css/hsn92-faturamento.css?v=9-2-6-20261028", "css/hsn93-communications.css?v=9-3-1-20261029", "css/hsn94-compact.css?v=9-4-1-20261104", "css/hsn96-dda-modern.css?v=9-6-20261110", "css/hsn97-auto-reconcile.css?v=9-7-20261110", "css/financial-workspace.css?v=10-20261113", "js/config.js", "js/clone-guard.js", "js/utils.js", "js/dates.js?v=10-20261113", "js/boletos.js", "js/alerts-engine.js?v=10-20261113", "js/phase3.js?v=8-8-20261022", "js/attachments.js", "js/document-parser.js", "js/ocr-reader.js", "js/document-reading.js", "js/financial-core.js?v=10-20261113", "js/import-rules.js?v=10-20261113", "js/hsn96-dda-intel.js?v=9-6-20261110", "js/phase4.js?v=10-20261113", "js/planning-engine.js?v=10-20261113", "js/phase5.js", "js/push-engine.js", "js/push.js?v=10-20261113", "js/finance.js?v=10-20261113", "js/zoho-connect.js?v=zoho-test-1", "js/financial-workspace.js?v=10-0-1-20261113", "js/app.js?v=10-20261113", "js/layout.js", "js/sicoob-collections.js?v=10-20261113", "js/premium-ui.js?v=premium-1", "js/hsn8-shell.js?v=9-3-0-20261029", "js/hsn97-auto-reconcile.js?v=10-20261113", "js/hsn90-modules.js?v=10-20261113", "js/hsn94-email-assist.js?v=9-4-1-20261104", "js/hsn92-faturamento.js?v=10-20261113", "js/hsn93-communications.js?v=9-4-1-20261104"];
+const PRELOAD=["./","./index.html","./css/hsn89-optimized.css?v=8-9-2-20261022","./js/theme.js","./icons/icon-192.png"];
+const STATIC_URLS=new Set(STATIC.map(path=>new URL(path,self.registration.scope).href));
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRELOAD))));
+self.addEventListener('activate',event=>event.waitUntil(
+ caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith(PREFIX)&&key!==CACHE).map(key=>caches.delete(key))))
+ .then(()=>self.clients.claim())
+));
+self.addEventListener('fetch',event=>{
+ const request=event.request,url=new URL(request.url);
+ if(request.method!=='GET'||url.origin!==self.location.origin)return;
+ if(!STATIC_URLS.has(url.href)&&request.mode!=='navigate')return;
+ event.respondWith((async()=>{
+  try{
+   const response=await fetch(request);
+   if(response.ok&&STATIC_URLS.has(url.href)){
+    const copy=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put(request,copy)));
+   }
+   return response;
+  }catch{
+   const cache=await caches.open(CACHE);
+   const saved=await cache.match(request);
+   if(saved)return saved;
+   if(request.mode==='navigate')return(await cache.match(new URL('./index.html',self.registration.scope).href))||Response.error();
+   return Response.error();
+  }
+ })());
+});
+
+// Push contém apenas resumos; nenhum token de acesso, chave privada ou documento.
+self.addEventListener('message',event=>{
+ if(event.data?.type==='HSN_PUSH_VERSION')event.ports?.[0]?.postMessage({pushVersion:6});
+});
+self.addEventListener('push',event=>{
+ let data={};try{data=event.data?.json()||{};}catch{}
+ const views=['alerts','commission_alerts','dda'],view=views.includes(data.view)?data.view:'alerts';
+ const title=typeof data.title==='string'?data.title.slice(0,100):'Financeiro HSN';
+ const body=typeof data.body==='string'?data.body.slice(0,700):'Abra o app para conferir seus avisos.';
+ event.waitUntil(self.registration.showNotification(title,{body,icon:new URL('./icons/icon-192.png',self.registration.scope).href,
+ badge:new URL('./icons/badge-96.png',self.registration.scope).href,
+ tag:typeof data.tag==='string'?data.tag.slice(0,150):'hsn-aviso',renotify:false,data:{view}}));
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();const view=['alerts','commission_alerts','dda'].includes(event.notification.data?.view)?event.notification.data.view:'alerts';
+ event.waitUntil((async()=>{const scope=new URL(self.registration.scope),url=new URL('./',scope);url.hash=view;
+ const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+ for(const client of list){const current=new URL(client.url);if(current.origin===scope.origin&&current.pathname.startsWith(scope.pathname)){
+ await client.focus();client.postMessage({type:'HSN_PUSH_OPEN',view});return;}}
+ await self.clients.openWindow(url.href);
+ })());
+});

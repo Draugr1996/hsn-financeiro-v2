@@ -1,0 +1,25 @@
+{
+  "passed": 20,
+  "tests": [
+    "Backup de dados originais e legado sem data",
+    "Título e hospedagem sem dívida duplicada",
+    "Pagamento parcial preserva valor original",
+    "Retry idempotente não repete recebimento",
+    "Excesso, data futura, negativo e cancelamento com baixa bloqueados",
+    "Quitação após segunda parcela",
+    "Estorno conserva evento original e reabre saldo",
+    "Atualização concorrente e reabertura direta bloqueadas",
+    "Faturamento confirma envio sem confirmar recebimento",
+    "Documentos faltantes bloqueiam envio confirmado",
+    "Importação por linha com erros e duplicatas explícitos",
+    "Extrato importado não recebe baixa automaticamente",
+    "Movimento bancário não pode quitar dois títulos",
+    "RPC não acessa título de outro dono",
+    "RLS de eventos impede leitura de outro proprietário",
+    "Pagamento parcial de despesa mantém valor da obrigação",
+    "Banco com referência repetida divergente é erro, sem sobrescrever movimento",
+    "DDA pago na origem não confirma baixa e reimportação atualiza somente a origem",
+    "Cópia financeira inclui livro de baixas e somente o proprietário",
+    "Migração repetida não duplica dados ou saldos"
+  ]
+}

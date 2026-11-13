@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.backup
+backups/
+.supabase/
+supabase/.temp/
+supabase/.branches/

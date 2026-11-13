@@ -1,0 +1,16 @@
+{
+  "passed": 9,
+  "tests": [
+    "Inicialização e painel com saldo previsto",
+    "Formulário registra recebimento parcial sem alterar dívida",
+    "Histórico abre e estorno mantém trilha",
+    "Faturamento vinculado confirma envio sem quitar conta",
+    "Conciliação interpreta crédito, prévia e baixa vinculada",
+    "Importação Sicoob apresenta erros por linha e preserva dívida",
+    "Enviar e reenviar cobrança usa o mesmo título sem criar dívida",
+    "Contas a pagar carregam após navegação sem CSS residual",
+    "Histórico financeiro reúne baixas, estornos e importações"
+  ],
+  "errors": [],
+  "environment": "JSDOM + PGlite; não é verificação visual de navegador"
+}

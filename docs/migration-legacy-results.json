@@ -1,0 +1,14 @@
+{
+  "passed": 9,
+  "tests": [
+    "Migração conclui com conta paga zero e sem valor",
+    "Conta zero mantém valor, status e data, sem usar estimativa positiva como pagamento",
+    "Conta sem valor e recebível zero não criam baixas fictícias",
+    "Baixa positiva continua migrando com o valor real",
+    "Registros sem baixa positiva ficam sinalizados com os valores originais",
+    "Backup mantém exatamente os registros anteriores à migração",
+    "Reexecutar não duplica abertura, aviso ou valores",
+    "Restrição de valor positivo permanece ativa para novas baixas",
+    "Aviso de migração respeita isolamento por proprietário"
+  ]
+}

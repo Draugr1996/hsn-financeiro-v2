@@ -1,0 +1,38 @@
+{
+  "local": true,
+  "externalEmailSent": false,
+  "results": [
+    {
+      "name": "Instalação vazia: 40 tabelas públicas e dois buckets privados",
+      "ok": true
+    },
+    {
+      "name": "Inicialização parametrizada e idempotente sem copiar dados antigos",
+      "ok": true
+    },
+    {
+      "name": "Título completo no esquema real com dívida única",
+      "ok": true
+    },
+    {
+      "name": "Reserva e finalização: tentativa sai de processing e libera trava",
+      "ok": true
+    },
+    {
+      "name": "Reenvio do título enviado mantém uma dívida e duas tentativas concluídas",
+      "ok": true
+    },
+    {
+      "name": "Recebimento parcial impede nova cobrança do valor original no servidor",
+      "ok": true
+    },
+    {
+      "name": "Outra conta autenticada não acessa os títulos nem as rotinas internas de envio",
+      "ok": true
+    },
+    {
+      "name": "Visitante sem sessão não lê títulos",
+      "ok": true
+    }
+  ]
+}

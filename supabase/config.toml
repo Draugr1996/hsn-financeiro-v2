@@ -1,0 +1,25 @@
+project_id = "hsn-financeiro-v2"
+
+[functions.zoho-oauth-start]
+verify_jwt = false
+
+[functions.zoho-send-mail]
+verify_jwt = false
+
+[functions.hsn-dispatch]
+verify_jwt = false
+
+[functions.zoho-mail-test]
+verify_jwt = false
+
+[functions.zoho-billing-mail]
+verify_jwt = false
+
+[functions.hsn-zoho-inbox-read]
+verify_jwt = false
+
+[functions.hsn-push]
+verify_jwt = false
+
+[functions.zoho-oauth-callback]
+verify_jwt = false

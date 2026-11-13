@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-11-13",
+  "supabase_project": "HSN Financeiro V2",
+  "project_ref": "qbowrzgpmkvlmmckvwaz",
+  "region": "sa-east-1",
+  "schema_installed": true,
+  "edge_functions_deployed": 8,
+  "user_initialized": false,
+  "external_integrations_enabled": false,
+  "financial_rows_copied": false,
+  "github_saved": true,
+  "local_tests_passed": 69,
+  "github_url": "https://github.com/Draugr1996/hsn-financeiro-v2",
+  "github_repository_private": true
+}
