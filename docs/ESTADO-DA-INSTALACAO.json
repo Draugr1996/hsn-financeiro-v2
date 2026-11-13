@@ -11,5 +11,15 @@
   "github_saved": true,
   "local_tests_passed": 69,
   "github_url": "https://github.com/Draugr1996/hsn-financeiro-v2",
-  "github_repository_private": false
+  "github_repository_private": false,
+  "site_url": "https://draugr1996.github.io/hsn-financeiro-v2/",
+  "pages_source": "github-actions",
+  "pages_deploy_run": 43494679107,
+  "auth_site_url_configured": true,
+  "auth_redirect_url_configured": true,
+  "public_signup_enabled": false,
+  "edge_app_url_configured": true,
+  "published_login_page_verified": true,
+  "authenticated_browser_validation": "pending_correct_password",
+  "automatic_publication": "push_main"
 }
