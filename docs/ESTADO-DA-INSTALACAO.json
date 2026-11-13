@@ -5,7 +5,7 @@
   "region": "sa-east-1",
   "schema_installed": true,
   "edge_functions_deployed": 8,
-  "user_initialized": false,
+  "user_initialized": true,
   "external_integrations_enabled": false,
   "financial_rows_copied": false,
   "github_saved": true,
