@@ -1,6 +1,6 @@
 # Hotel Serra Negra · Financeiro V2
 
-Clone independente do aplicativo recebido, com banco Supabase separado e melhorias de integridade financeira. Leia primeiro [PASSO-A-PASSO.md](PASSO-A-PASSO.md).
+Clone independente do aplicativo recebido, com banco Supabase separado e melhorias de integridade financeira. Aplicativo publicado: https://draugr1996.github.io/hsn-financeiro-v2/. Login: gerencia@hotelserranegra.com.br, com a senha do usuário no novo projeto. Leia [PASSO-A-PASSO.md](PASSO-A-PASSO.md) para instalar outra cópia.
 
 Inclui os módulos existentes de contas, fornecedores, recorrências, comissões, DDA, documentos, cobranças Sicoob, faturamento, comunicação, Zoho, notificações, histórico e backups. Incorpora contas a receber com hospedagem/documentos, pagamentos parciais, estornos, importação com prévia e idempotência, conciliação confirmada e painel que separa previsão e dinheiro recebido.
 
@@ -13,7 +13,7 @@ Melhorias específicas desta cópia:
 - Reenvio do mesmo título aceito pelo servidor, com proteção contra cobrança de títulos com baixas.
 - Uma linha por tentativa de envio com início, término e auditoria; travas liberadas após sucesso/falha e mantidas em resultado incerto.
 - Autorização do proprietário nas funções do servidor; e-mail e push desativados até configuração explícita.
-- Publicação manual do frontend sem expor SQL, backups, testes ou código do servidor na pasta do site.
+- Publicação automática após alterações na branch `main`, com testes antes da implantação; publica somente o frontend sem expor SQL, backups, testes ou código do servidor na pasta do site.
 
 ## Desenvolvimento
 
@@ -23,6 +23,6 @@ As funções leem chaves e tokens apenas no servidor. Arquivos `.env` são ignor
 
 ## Limites da entrega
 
-Os lançamentos antigos, PDFs, tokens Zoho e inscrições push não foram migrados. Seu novo usuário e as integrações externas precisam ser configurados conforme o guia. Os testes locais não enviam e-mails. Não foi feita validação visual em navegador neste ambiente nem um envio real pelo Zoho.
+Os lançamentos antigos, PDFs, tokens Zoho e inscrições push não foram migrados. O usuário da gerência foi inicializado e o cadastro público foi desativado. As URLs de autenticação e do servidor estão configuradas para o site publicado. A página de login foi verificada no navegador; a validação autenticada está pendente porque a senha informada foi recusada. Os testes não enviam e-mails. Zoho e push continuam desativados, aguardando credenciais e autorização de integração; nenhum envio real pelo Zoho foi realizado.
 
 Mantém o modelo de proprietário único do sistema recebido. Para usuários individuais por funcionário e trilha por pessoa, é necessário um trabalho específico de permissões.
