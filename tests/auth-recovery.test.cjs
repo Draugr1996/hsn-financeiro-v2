@@ -1,0 +1,25 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {JSDOM}=require('jsdom');
+const cfg={supabaseUrl:'https://qbowrzgpmkvlmmckvwaz.supabase.co',supabaseAnonKey:'sb_publishable_'+('x'.repeat(35)),projectRef:'qbowrzgpmkvlmmckvwaz',loginEmail:'teste@example.com',ownerId:'11111111-1111-4111-8111-111111111111'};
+async function page({session=null,verified=cfg.ownerId,hash='',getError=null,updateError=null,mailError=null}={}){
+ const dom=new JSDOM(fs.readFileSync('senha.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.com/clone/senha.html'+hash,runScripts:'outside-only'}),w=dom.window;
+ const calls={updates:[],mails:[],signouts:[]};w.HSN_CONFIG=cfg;w.HSN_CLONE_GUARD={validate:()=>true};
+ w.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session},error:null}),getUser:async()=>({data:{user:verified?{id:verified}:null},error:getError}),updateUser:async args=>{calls.updates.push(args);return{error:updateError};},resetPasswordForEmail:async(...args)=>{calls.mails.push(args);return{error:mailError};},signOut:async args=>{calls.signouts.push(args);return{error:null};}}})};
+ vm.runInContext(fs.readFileSync('js/auth-recovery.js','utf8'),dom.getInternalVMContext());
+ const flush=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};await flush();
+ const $=id=>w.document.getElementById(id),submit=async(id)=>{$(id).dispatchEvent(new w.Event('submit',{cancelable:true}));await flush();};
+ return{dom,w,$,calls,submit};
+}
+test('Abrir recuperação sem sessão não envia email nem altera senha',async()=>{const p=await page();try{assert.equal(p.$('password-form').hidden,true);assert.equal(p.$('request-form').hidden,false);assert.equal(p.calls.mails.length,0);assert.equal(p.calls.updates.length,0);}finally{p.dom.window.close();}});
+test('Link expirado limpa o endereço e oferece uma nova solicitação',async()=>{const p=await page({hash:'#error=access_denied&error_code=otp_expired'});try{assert.equal(p.w.location.hash,'');assert.match(p.$('status').textContent,/expirou/);assert.equal(p.$('password-form').hidden,true);}finally{p.dom.window.close();}});
+test('Sessão de outro usuário não permite alterar senha da gerência',async()=>{const p=await page({session:{user:{id:'other'}},verified:'other'});try{assert.equal(p.$('password-form').hidden,true);await p.submit('password-form');assert.equal(p.calls.updates.length,0);}finally{p.dom.window.close();}});
+test('Validação no servidor bloqueia sessão local não confirmada',async()=>{const p=await page({session:{user:{id:cfg.ownerId}},getError:{message:'expired'}});try{assert.equal(p.$('password-form').hidden,true);assert.equal(p.calls.updates.length,0);}finally{p.dom.window.close();}});
+test('Senhas divergentes não são submetidas',async()=>{const p=await page({session:{user:{id:cfg.ownerId}}});try{p.$('new-password').value='Senha-ficticia-123';p.$('confirm-password').value='Outra-ficticia-123';await p.submit('password-form');assert.equal(p.calls.updates.length,0);assert.match(p.$('status').textContent,/iguais/);}finally{p.dom.window.close();}});
+test('Senha confirmada só muda por envio do formulário e encerra sessão local',async()=>{const p=await page({session:{user:{id:cfg.ownerId}}});try{assert.equal(p.calls.updates.length,0);p.$('new-password').value=p.$('confirm-password').value='Senha-ficticia-123';await p.submit('password-form');assert.equal(p.calls.updates.length,1);assert.equal(p.calls.signouts[0].scope,'local');assert.equal(p.$('new-password').value,'');assert.match(p.$('status').textContent,/Senha atualizada/);}finally{p.dom.window.close();}});
+test('Solicitação explícita fixa destinatário e retorno do próprio clone',async()=>{const p=await page();try{await p.submit('request-form');assert.equal(p.calls.mails.length,1);assert.equal(p.calls.mails[0][0],cfg.loginEmail);assert.equal(p.calls.mails[0][1].redirectTo,'https://example.com/clone/senha.html');assert.equal(p.$('request-form').hidden,true);}finally{p.dom.window.close();}});
+test('Falha do servidor mantém formulário e não anuncia sucesso',async()=>{const p=await page({session:{user:{id:cfg.ownerId}},updateError:{code:'weak_password'}});try{p.$('new-password').value=p.$('confirm-password').value='Senha-ficticia-123';await p.submit('password-form');assert.equal(p.$('password-form').hidden,false);assert.match(p.$('status').textContent,/mais forte/);assert.equal(p.calls.signouts.length,0);}finally{p.dom.window.close();}});
+test('Retorno de recuperação na página principal vai à tela de senha sem iniciar o painel',async()=>{
+ const code=fs.readFileSync('js/app.js','utf8').match(/async function init\(\)\{([\s\S]*?)\n\}/)[0];let target;
+ const context={URL,URLSearchParams,location:{href:'https://example.com/clone/',hash:'#type=recovery&access_token=fake-test-token',replace:url=>target=url}};
+ vm.runInNewContext(code,context);await context.init();assert.equal(target,'https://example.com/clone/senha.html#type=recovery&access_token=fake-test-token');
+});

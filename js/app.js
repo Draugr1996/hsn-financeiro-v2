@@ -206,6 +206,13 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(busy||!use
 window.addEventListener('online',()=>{connected();if(user)load();});window.addEventListener('offline',()=>{connected();notice('Sem internet. Não há salvamento local de cadastros.');});
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;$('install').hidden=false;});$('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('install').hidden=true;}};
 async function init(){
+ // Links enviados pelo painel do Supabase voltam à URL principal por padrão.
+ // Encaminhe o retorno inteiro para a tela de senha antes de inicializar a sessão.
+ const authReturn=new URLSearchParams(location.hash.slice(1));
+ if(authReturn.get('type')==='recovery'||authReturn.has('error')){
+  const target=new URL('senha.html',location.href);target.hash=location.hash;
+  location.replace(target.href);return;
+ }
  connected();
  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./service-worker.js').catch(()=>notice('PWA: não foi possível registrar o service worker. Verifique HTTPS.'));
  try{

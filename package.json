@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "test": "node --test tests/financial-core.test.cjs && node tests/sql-integration.mjs && node tests/migration-legacy.test.mjs && node tests/dom-integration.mjs && npm run test:clone",
+    "test": "node --test tests/auth-recovery.test.cjs && node --test tests/financial-core.test.cjs && node tests/sql-integration.mjs && node tests/migration-legacy.test.mjs && node tests/dom-integration.mjs && npm run test:clone",
     "test:browser": "node tests/browser-integration.mjs",
     "test:clone": "node --test tests/clone-isolation.test.cjs && node tests/clone-schema.mjs",
     "build": "node scripts/build.mjs",
