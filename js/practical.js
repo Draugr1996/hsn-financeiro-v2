@@ -7,7 +7,10 @@
  function sync(){
   const active=nav?.querySelector('[data-view].active');
   if(!active)return;
-  if(config?.contains(active))config.open=true;
+  const bankSection=['imports','dda','sicoob_collections'].includes(active.dataset.view);
+  nav.dataset.section=bankSection?'bank':'';
+  if(config?.contains(active)&&!bankSection)config.open=true;
+  else if(bankSection&&config)config.open=false;
  }
  if(nav)new MutationObserver(sync).observe(nav,{subtree:true,attributes:true,attributeFilter:['class']});
  document.addEventListener('keydown',e=>{

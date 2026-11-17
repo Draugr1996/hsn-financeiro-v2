@@ -15,9 +15,10 @@
  let lastActive=null;
  function sync(){
   const active=nav.querySelector('[data-view].active');
+  const bankSection=['imports','dda','sicoob_collections'].includes(active?.dataset.view);
   nav.querySelectorAll('[data-view]').forEach(b=>{if(b===active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
-  groups.forEach(g=>{const selected=!!active&&g.contains(active);if(g.classList.contains('has-current')!==selected)g.classList.toggle('has-current',selected);});
-  if(active&&active!==lastActive){const group=active.closest('.nav-topic');groups.forEach(other=>{other.open=other===group;});lastActive=active;}
+  groups.forEach(g=>{const selected=!bankSection&&!!active&&g.contains(active);if(g.classList.contains('has-current')!==selected)g.classList.toggle('has-current',selected);});
+  if(active&&active!==lastActive){const group=bankSection?null:active.closest('.nav-topic');groups.forEach(other=>{other.open=other===group;});lastActive=active;}
   const title=document.getElementById('view-title')?.textContent;
   if(title)document.getElementById('navigation-current').textContent=title;
  }
