@@ -5,6 +5,17 @@ window.HSN_WORKSPACE=(()=>{'use strict';
  const docsNames={extrato:'Extrato da hospedagem',voucher:'Voucher',nota_fiscal:'Nota fiscal',boleto:'Boleto'};
  let state={receivables:[],payables:[],events:[],bank:[],imports:[],audit:[]},ready=false,loading=0;
  let start='',end='',company='',filter='',search='',active='dashboard',mutation=false;
+ function preferenceKey(){return 'hsn-v2-filters:'+HSN_CONFIG.projectRef+':'+user?.id+':'+active;}
+ function saveFilters(){try{localStorage.setItem(preferenceKey(),JSON.stringify({start,end,company,filter}));}catch{}}
+ function restoreFilters(){
+  start=end=company=filter=search='';
+  try{const p=JSON.parse(localStorage.getItem(preferenceKey())||'{}');
+   if(/^\d{4}-\d{2}-\d{2}$/.test(p.start||''))start=p.start;
+   if(/^\d{4}-\d{2}-\d{2}$/.test(p.end||''))end=p.end;
+   if(typeof p.company==='string')company=p.company.slice(0,180);
+   if(p.filter===''||Object.hasOwn(names,p.filter))filter=p.filter;
+  }catch{}
+ }
  function el(tag,text,cls){const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n;}
  function btn(text,fn,cls='secondary'){const n=el('button',text,cls);n.type='button';n.onclick=()=>Promise.resolve().then(fn).catch(failure);return n;}
  function check(r){if(r.error)throw r.error;return r.data;}
@@ -12,7 +23,9 @@ window.HSN_WORKSPACE=(()=>{'use strict';
  function reset(){loading++;ready=false;mutation=false;state={receivables:[],payables:[],events:[],bank:[],imports:[],audit:[]};start=end=company=filter=search='';document.querySelectorAll('.hsn10-dialog').forEach(d=>d.remove());}
  const handles=v=>['dashboard','receivables','hotel_billing','receipts_reconciliation','reconciliation','financial_history'].includes(v);
  async function load(v){
-  active=v==='reconciliation'?'receipts_reconciliation':v;const token=++loading;ready=false;setup('Carregando…');
+  const next=v==='reconciliation'?'receipts_reconciliation':v;
+  if(!ready||active!==next){active=next;restoreFilters();}
+  const token=++loading;ready=false;setup('Carregando…');
   try{
    const [receivables,payables,events,bank,imports,audit,suppliers]=await Promise.all(['sicoob_collections','payables','hsn10_events','hsn10_bank_transactions','hsn10_import_batches','hsn10_audit','suppliers'].map(all));
    if(token!==loading||!user||view!==v)return;
@@ -21,7 +34,7 @@ window.HSN_WORKSPACE=(()=>{'use strict';
   }catch(e){if(token!==loading)return;setup('Ativar controle financeiro');$('records').append(el('div','Para usar o painel integrado, execute sql/HSN-10-integridade-financeira.sql no Supabase após o backup. Os módulos anteriores continuam disponíveis. Detalhe: '+e.message,'hsn10-warning'));}
  }
  function setup(title){
-  $('view-title').textContent=title;$('view-description').textContent='Dívida, envio e dinheiro confirmado em etapas separadas.';$('new').hidden=true;$('search').closest('.search-wrap').hidden=true;
+  $('view-title').textContent=title;$('view-description').textContent=({dashboard:'Seus saldos e o que precisa resolver.',receivables:'Confira cada título, seus recebimentos e o saldo pendente.',hotel_billing:'Hospedagem, documentos e envio em uma única ficha.',receipts_reconciliation:'Importe o extrato e confira o dinheiro recebido.'})[active]||'Consulte seus registros e o histórico.';$('new').hidden=true;$('search').closest('.search-wrap').hidden=true;
   for(const id of ['summary','finance-controls','records','calendar-board','commission-calendar-summary'])$(id).replaceChildren();
   $('records').className='records hsn10-workspace';$('summary').classList.remove('sicoob-summary');
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===active));
@@ -30,58 +43,75 @@ window.HSN_WORKSPACE=(()=>{'use strict';
  function select(parent,label,opts,value,onchange){const l=el('label',label),s=el('select');for(const [v,t]of opts)s.append(new Option(t,v));s.value=value;s.onchange=()=>onchange(s.value);l.append(s);parent.append(l);return s;}
  function controls(){const c=$('finance-controls');c.className='finance-controls hsn10-filters';
   const a=field(c,'start','Vencimento de / caixa de',start,'date'),b=field(c,'end','Até',end,'date');
-  a.onchange=()=>{start=a.value||'0001-01-01';render();};b.onchange=()=>{end=b.value||'9999-12-31';render();};
+  a.onchange=()=>{start=a.value||'0001-01-01';saveFilters();render();};b.onchange=()=>{end=b.value||'9999-12-31';saveFilters();render();};
   const parties=[...new Set([...state.receivables.map(r=>r.company),...state.payables.map(r=>r.company_name)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  select(c,'Empresa / fornecedor',[['','Todas'],...parties.map(p=>[p,p])],company,v=>{company=v;render();});
-  if(active==='receivables')select(c,'Situação',[['','Todas'],...Object.entries(names)],filter,v=>{filter=v;render();});
+  if(company&&!parties.includes(company))company='';
+  select(c,'Empresa / fornecedor',[['','Todas'],...parties.map(p=>[p,p])],company,v=>{company=v;saveFilters();render();});
+  if(active==='receivables')select(c,'Situação',[['','Todas'],...Object.entries(names)],filter,v=>{filter=v;saveFilters();render();});
   const q=field(c,'query','Buscar hóspede, empresa ou referência',search);q.type='search';q.oninput=()=>{search=q.value;drawContent();};
-  c.append(btn('Todos os períodos',()=>{start='0001-01-01';end='9999-12-31';render();}));
+  c.append(btn('Este mês',()=>{start=M().today().slice(0,7)+'-01';end=HSN_DATES.monthDay(start.slice(0,7),31);saveFilters();render();}),btn('Todos os períodos',()=>{start='0001-01-01';end='9999-12-31';saveFilters();render();}));
  }
  function list(){return state.receivables.filter(r=>(!company||M().norm(r.company)===M().norm(company))&&r.due_date>=start&&r.due_date<=end&&(!filter||M().status(r,'receivable')===filter)&&M().norm([r.company,r.guest_name,r.reference,r.external_reference,r.stay_reference,r.nf_number].join(' ')).includes(M().norm(search)));}
  function stat(label,value,help,cls=''){const c=el('article',null,'stat '+cls);c.append(el('small',label),el('strong',money(value)),el('span',help,'muted'));$('summary').append(c);}
- function render(){if(!ready)return;setup(({dashboard:'Painel financeiro',receivables:'Contas a receber',hotel_billing:'Faturamento do hotel',receipts_reconciliation:'Conferência de recebimentos',financial_history:'Histórico financeiro'})[active]);controls();drawContent();}
+ function render(){if(!ready)return;setup(({dashboard:'Meu dia',receivables:'Contas a receber',hotel_billing:'Faturamento do hotel',receipts_reconciliation:'Conferência de recebimentos',financial_history:'Histórico financeiro'})[active]);controls();drawContent();}
  function drawContent(){
   $('records').replaceChildren();$('summary').replaceChildren();
   if(start>end){$('records').append(el('p','A data inicial deve ser anterior à final.','hsn10-warning'));return;}
   const totals=M().summary(state.payables,state.receivables,state.events,{start,end,company});
   stat('A receber',totals.receivable,'Saldo por vencimento');stat('Vencido a receber',totals.overdue,'Saldo vencido dentro do filtro','red');stat('Recebido no período',totals.received,'Baixas menos estornos pela data efetiva','green');stat('A pagar',totals.payable,'Saldo por vencimento, incluindo estimativas');
-  const note=el('p','Os saldos usam o vencimento; recebido e pago usam a data da baixa. Emitir ou enviar cobrança não confirma pagamento. Contas arquivadas continuam compondo o saldo.','hsn10-explainer');$('records').append(note);
+  const rules=el('details',null,'practical-rules');rules.append(el('summary','Como os valores são calculados'),el('p','Os saldos usam o vencimento; recebido e pago usam a data da baixa. Emitir ou enviar cobrança não confirma pagamento. Contas arquivadas continuam compondo o saldo.'));$('records').append(rules);
   if(totals.undated)$('records').append(el('p',totals.undated+' título(s) antigo(s) têm saldo recebido sem data registrada; não entram no caixa por período. Confira o histórico original.','hsn10-warning'));
   if(active==='dashboard')return dashboard(totals);
   if(active==='receipts_reconciliation')return reconciliation();
   if(active==='financial_history')return history();
   const actions=el('div',null,'actions');actions.append(btn('Nova conta a receber',()=>editReceivable()),btn('Cobranças e reenvios Sicoob',()=>navigate('sicoob_collections')),btn('Exportar conferência CSV',()=>exportRows(list())));$('records').append(actions);
   if(active==='hotel_billing')$('records').append(el('p','Confira hospedagem → extrato e voucher → nota fiscal e boleto → envie no check-out → registre a confirmação do envio. O registro de envio não altera o saldo.','hsn10-explainer'));
-  const rows=list();if(!rows.length)$('records').append(el('p','Nenhum título para este filtro.'));
+  const rows=list();if(!rows.length){const empty=el('section',null,'practical-empty');empty.append(el('h2','Nenhum título neste filtro'),el('p','Cadastre uma conta a receber ou amplie o período para consultar outros registros.'));$('records').append(empty);return;}
   const t=table(['Empresa / hóspede','Hospedagem / documento','Vencimento','Original / recebido / saldo','Situação / faturamento','Ações']);
   for(const r of rows){const tr=el('tr'),b=M().balance(r,'receivable'),st=M().status(r,'receivable');
    const a=el('td');a.append(el('strong',r.company),el('small',r.guest_name||'Hóspede não vinculado'));const stay=el('td');stay.append(el('span',r.stay_reference||'Vincular hospedagem'),el('small',(r.check_in||'—')+' a '+(r.check_out||'—')),el('small','Doc. '+(r.external_reference||'—')+' · Ref. '+r.reference));
    const values=el('td');values.append(el('strong',money(b.total)),el('small','Recebido: '+money(b.paid)),el('strong','Saldo: '+money(b.pending)));
    const situation=el('td');situation.append(el('span',names[st],'hsn10-status '+st),el('small',r.cancelled_at?'Cancelamento: '+r.cancellation_reason:(r.status==='sent'||r.sent_at?'Cobrança enviada':'Cobrança emitida')),el('small',M().billingState(r).label));
-   const act=el('td');act.append(btn('Conferir / editar',()=>editReceivable(r)),btn('Histórico e baixas',()=>paymentHistory('receivable',r)));
+   const act=el('td');act.append(btn('Abrir ficha',()=>editReceivable(r)));
    if(b.pending>0&&!r.cancelled_at)act.append(btn('Registrar recebimento',()=>payment('receivable',r)));
-   if(active==='hotel_billing'&&!r.cancelled_at){act.append(btn('Enviar documentos',()=>{editReceivableForSend(r);}),btn('Registrar envio confirmado',()=>markBilling(r)));}
-   if(!b.paid)act.append(btn(r.cancelled_at?'Restaurar título':'Cancelar título',()=>cancel(r)));
+   const more=el('details',null,'practical-more');more.append(el('summary','Mais opções'),btn('Histórico e baixas',()=>paymentHistory('receivable',r)));
+   if(active==='hotel_billing'&&!r.cancelled_at){more.append(btn('Enviar documentos',()=>{editReceivableForSend(r);}),btn('Registrar envio confirmado',()=>markBilling(r)));}
+   if(!b.paid)more.append(btn(r.cancelled_at?'Restaurar título':'Cancelar título',()=>cancel(r)));act.append(more);
    tr.append(a,stay,el('td',HSN_DATES.br(r.due_date)),values,situation,act);t.body.append(tr);
   }$('records').append(t.wrap);
  }
  function table(headings){const wrap=el('div',null,'hsn10-table-wrap'),table=el('table',null,'account-table hsn10-table'),head=el('thead'),tr=el('tr'),body=el('tbody');for(const h of headings)tr.append(el('th',h));head.append(tr);table.append(head,body);wrap.append(table);return {wrap,body};}
  function dashboard(t){
-  const panel=el('section',null,'hsn10-panel');panel.append(el('h2','Próximas ações da equipe'));
-  const rs=list().filter(r=>!r.cancelled_at),missing=rs.filter(r=>M().billingState(r).key==='stay'||M().missingBilling(r).length),pending=rs.filter(r=>!r.billing_sent_at&&r.check_out&&r.check_out<=M().today());
-  const actions=[['Contas a receber',rs.length+' títulos · conferir saldos e pagamentos parciais','receivables'],['Faturamento',missing.length+' com cadastro/documentos faltantes · '+pending.length+' com check-out e envio pendente','hotel_billing'],['Conferir banco',state.bank.filter(b=>!b.payment_id&&b.amount>0).length+' créditos aguardando conciliação','receipts_reconciliation'],['Contas a pagar','Saldo por vencimento: '+money(t.payable),'payables'],['Histórico financeiro','Pagamentos, estornos, alterações e importações','financial_history']];
-  for(const [label,help,v]of actions){const b=btn(label+' →',()=>navigate(v),'hsn10-action');b.append(el('small',help));panel.append(b);}panel.append(btn('Baixar cópia dos dados financeiros (JSON)',exportBackup));panel.append(el('p','Pago no período: '+money(t.paid)+' · Cancelado a receber no filtro: '+money(t.cancelled)));$('records').append(panel);
+  const shortcuts=el('div',null,'practical-shortcuts');shortcuts.append(btn('+ Nova despesa',async()=>{await navigate('payables');if(view==='payables')HSN_FINANCE.editor();},'primary'),btn('+ Novo faturamento',()=>editReceivable(), 'secondary'),btn('Registrar recebimento',()=>navigate('receivables',{start:'0001-01-01',end:'9999-12-31',filter:''})),btn('Importar arquivo',()=>navigate('imports')));$('records').append(shortcuts);
+  const today=M().today(),forCompany=r=>!company||M().norm(r.company||r.company_name)===M().norm(company);
+  const rs=state.receivables.filter(r=>forCompany(r)&&!r.cancelled_at),ps=state.payables.filter(r=>forCompany(r)&&!r.archived&&!M().balance(r).cancelled&&M().balance(r).pending>0);
+  const late=rs.filter(r=>M().balance(r,'receivable').pending>0&&r.due_date<today),due=ps.filter(r=>r.due_date<=today),missing=rs.filter(r=>!r.billing_sent_at&&(M().billingState(r).key==='stay'||M().missingBilling(r).length)),pending=rs.filter(r=>!r.billing_sent_at&&r.check_out&&r.check_out<=today);
+  const grid=el('div',null,'practical-day'),panel=el('section',null,'practical-panel');panel.append(el('h2','Próximas ações'),el('p','Pendências de todos os períodos, respeitando a empresa selecionada.'));
+  const actions=[['Pagar hoje ou regularizar atrasos',due.length,'Contas com saldo e vencimento até hoje','payables'],['Cobrar valores vencidos',late.length,'Títulos com saldo ainda não recebido','receivables'],['Completar documentos',missing.length,'Faturamentos sem cadastro ou documentos completos','hotel_billing'],['Enviar faturamentos',pending.length,'Check-out realizado e envio ainda não confirmado','hotel_billing'],['Conferir recebimentos',state.bank.filter(b=>!b.payment_id&&b.amount>0).length,'Créditos do banco aguardando vínculo; total de todas as empresas','receipts_reconciliation']];
+  for(const [label,count,help,v]of actions){const b=btn('',()=>navigate(v,handles(v)?{start:'0001-01-01',end:'9999-12-31',company,filter:''}:null),'practical-task'),copy=el('span',null,'practical-task-copy');copy.append(el('strong',label),el('small',help));b.append(copy,el('span',String(count),'practical-count'+(count?' attention':'')));panel.append(b);}
+  grid.append(panel);
+  const upcoming=el('section',null,'practical-panel');upcoming.append(el('h2','Próximos vencimentos'),el('p','Contas a pagar, incluindo atrasadas. Até cinco itens.'));
+  const ul=el('ul',null,'practical-upcoming');for(const p of ps.sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))).slice(0,5)){const li=el('li'),copy=el('div');copy.append(el('strong',p.title),el('small',HSN_DATES.br(p.due_date)+(p.company_name?' · '+p.company_name:'')));li.append(copy,el('strong',money(M().balance(p).pending)));ul.append(li);}if(!ul.children.length)upcoming.append(el('p','Nenhuma conta a pagar pendente.'));else upcoming.append(ul);
+  upcoming.append(btn('Ver contas a pagar',()=>navigate('payables')),btn('Histórico financeiro',()=>navigate('financial_history')));grid.append(upcoming);$('records').append(grid);
+  const extra=el('details',null,'practical-rules');extra.append(el('summary','Resumo e cópia de segurança'),el('p','Pago no período: '+money(t.paid)+' · Cancelado a receber no filtro: '+money(t.cancelled)),btn('Baixar cópia dos dados financeiros (JSON)',exportBackup));$('records').append(extra);
  }
- function navigate(v){if(mutation)return;view=v;active=v;$('search').value='';loadGlobal();}
+ async function navigate(v,preset=null){if(mutation)return;view=v;$('search').value='';await loadGlobal();if(preset&&handles(v)&&view===v&&ready){start=preset.start;end=preset.end;company=preset.company??company;filter=preset.filter??'';saveFilters();render();}}
  function loadGlobal(){return window.HSN_WORKSPACE.handles(view)?load(view):window.HSN_FINANCE.navigate(view);}
  function dialog(title){const d=el('dialog',null,'hsn10-dialog'),f=el('form'),head=el('div',null,'topline'),msg=el('p',null,'hsn10-form-message');msg.setAttribute('role','status');head.append(el('h2',title),btn('Fechar',()=>{if(!mutation)d.remove();}));f.append(head);d.append(f);d.addEventListener('cancel',e=>{if(mutation)e.preventDefault();else d.remove();});document.body.append(d);const content=el('div',null,'grid');f.append(content,msg);return {d,f,content,msg};}
  async function saveDialog(ctx,fn){if(mutation)return;mutation=true;ctx.f.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();ctx.d.remove();if(handles(view))await load(view);}catch(e){ctx.msg.textContent=e.message;}finally{mutation=false;ctx.f.querySelectorAll('button').forEach(b=>b.disabled=false);}}
  function submit(ctx,label,fn){const s=el('button',label);s.type='submit';ctx.f.append(s);ctx.f.onsubmit=e=>{e.preventDefault();saveDialog(ctx,fn);};ctx.d.showModal();}
  function editReceivable(r=null){
   const ctx=dialog(r?'Conferir título e hospedagem':'Nova conta a receber'),c=ctx.content;
-  for(const [key,label,type,req]of [['company','Empresa / responsável','text',true],['guest_name','Hóspede(s)','text',false],['reference','Nosso número / referência única','text',true],['external_reference','Número do documento','text',false],['amount','Valor original da dívida (R$)','number',true],['due_date','Vencimento','date',true],['stay_reference','Reserva / hospedagem','text',false],['check_in','Check-in','date',false],['check_out','Check-out','date',false],['nf_number','Número da NF','text',false]])field(c,key,label,r?.[key]??'',type,req);
-  c.append(el('p','Documentos: informe número, protocolo ou caminho no arquivo compartilhado. A marcação confirma a conferência pela equipe; não anexa o arquivo.','hsn10-explainer'));
-  for(const [key,label]of Object.entries(docsNames))field(c,'doc_'+key,label+' · referência conferida',r?.billing_documents?.[key]||'');
+  if(r){const balance=M().balance(r,'receivable'),summary=el('div',null,'practical-record-summary');for(const [title,value]of [['Valor original',money(balance.total)],['Recebido',money(balance.paid)],['Saldo pendente',money(balance.pending)],['Pagamento',names[M().status(r,'receivable')]],['Faturamento',M().billingState(r).label]]){const part=el('div',title);part.append(el('strong',value));summary.append(part);}c.append(summary);}
+  const groups=[['Dados da cobrança',[['company','Empresa / responsável','text',true],['reference','Nosso número / referência única','text',true],['amount','Valor original da dívida (R$)','number',true],['due_date','Vencimento','date',true],['external_reference','Número do documento','text',false]]],['Hospedagem',[['guest_name','Hóspede(s)','text',false],['stay_reference','Reserva / hospedagem','text',false],['check_in','Check-in','date',false],['check_out','Check-out','date',false]]]];
+  for(const [title,fields]of groups){const group=el('fieldset',null,'practical-fieldset');group.append(el('legend',title));for(const [key,label,type,req]of fields)field(group,key,label,r?.[key]??'',type,req);c.append(group);}
+  const docs=el('fieldset',null,'practical-fieldset');docs.append(el('legend','Documentos e conferência'),el('p','Informe o número, protocolo ou caminho do documento. Estes campos registram sua conferência; os arquivos são enviados em Enviar documentos.','hsn10-explainer'));field(docs,'nf_number','Número da NF',r?.nf_number||'');
+  for(const [key,label]of Object.entries(docsNames))field(docs,'doc_'+key,label+' · referência conferida',r?.billing_documents?.[key]||'');c.append(docs);
+  if(r){const history=el('details',null,'practical-record-history');history.append(el('summary','Histórico deste título'));
+   history.append(el('p',r.billing_sent_at?'Envio do faturamento confirmado em '+new Date(r.billing_sent_at).toLocaleString('pt-BR'):'Envio do faturamento ainda não confirmado.'));
+   const events=state.events.filter(e=>e.kind==='receivable'&&e.target_id===r.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+   for(const e of events)history.append(el('p',(e.reverses_id?'Estorno: ':'Recebimento: ')+money(e.amount)+' · '+(e.payment_date||'Sem data')+' · '+(e.reference||'')+' · '+(e.reason||'')));if(!events.length)history.append(el('p','Nenhum recebimento registrado.'));c.append(history);
+  }
   submit(ctx,'Salvar título e conferência',async()=>{const fd=new FormData(ctx.f),data=Object.fromEntries([...fd].filter(([k])=>!k.startsWith('doc_')));data.amount=Number(data.amount);data.billing_documents=Object.fromEntries(Object.keys(docsNames).map(k=>[k,String(fd.get('doc_'+k)||'').trim()]));check(await db.rpc('hsn10_save_receivable',{p_id:r?.id||null,p_expected_updated_at:r?.updated_at||null,p_data:data}));});
  }
  function payment(kind,r,bank=null){
@@ -110,6 +140,7 @@ window.HSN_WORKSPACE=(()=>{'use strict';
   window.HSN_BILLING_CONTEXT={id:r.id,company:r.company,nf:r.nf_number};navigate('billing_send');
  }
  function reconciliation(){
+  const tabs=el('nav',null,'practical-tabs');tabs.setAttribute('aria-label','Banco e importações');for(const [label,target]of [['Planilhas e pagamentos','imports'],['Cobranças Sicoob','sicoob_collections'],['DDA','dda']])tabs.append(btn(label,()=>navigate(target)));$('records').append(tabs);
   const controls=el('div',null,'actions'),input=el('input');input.type='file';input.accept='.csv,.ofx';input.setAttribute('aria-label','Importar extrato bancário');input.onchange=async()=>{try{await importBank(input.files?.[0]);}catch(e){failure(e);}input.value='';};controls.append(el('strong','Extrato bancário CSV / OFX'),input);$('records').append(controls,el('p','Importe e confira créditos e débitos. A conciliação exige conta, referência, data e liquidação identificadas. Não faz baixa por semelhança.','hsn10-explainer'));
   const t=table(['Data / conta','Histórico / referência','Banco','Conferência']);
   for(const tx of state.bank.filter(t=>t.transaction_date>=start&&t.transaction_date<=end).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date))){

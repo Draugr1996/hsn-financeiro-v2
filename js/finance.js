@@ -20,6 +20,10 @@ const stageIsOpen=p=>p.payment_status!=='paid'&&workflowStage(p)!=='cancelled';
 const docNames={boleto:'Boleto',nota_fiscal:'Nota fiscal',comprovante:'Comprovante',outros:'Outros'};
 let data={payables:[],models:[],suppliers:[],types:[],holidays:[],documents:[]};
 let month='',statusFilter='',workflowFilter='',typeFilter='',calendarMode='month',showArchived=false,kind='payables',version=0;
+let filterContext='';
+function personalFilterKey(){return 'hsn-v2-filters:'+HSN_CONFIG.projectRef+':'+user?.id+':'+kind;}
+function savePersonalFilters(){try{localStorage.setItem(personalFilterKey(),JSON.stringify({month,statusFilter,workflowFilter,typeFilter,showArchived}));}catch{}}
+function restorePersonalFilters(){const key=personalFilterKey();if(filterContext===key)return;filterContext=key;month=statusFilter=workflowFilter=typeFilter='';showArchived=false;try{const p=JSON.parse(localStorage.getItem(key)||'{}');if(/^\d{4}-\d{2}$/.test(p.month||''))month=p.month;if(Object.hasOwn(labels,p.statusFilter))statusFilter=p.statusFilter;if(p.workflowFilter==='paid'||Object.hasOwn(workflowText,p.workflowFilter))workflowFilter=p.workflowFilter;if(typeof p.typeFilter==='string')typeFilter=p.typeFilter.slice(0,80);showArchived=p.showArchived===true;}catch{}}
 let workflowSupported=null,financeSnapshotInFlight=null;const selectedPayables=new Set();const selectedRecurring=new Set();
 let selected=null,editingRecord=null,editingTable='',preview=[],previewMonth='',pendingUpload=null;
 const handles=v=>['approvals','reconciliation','payments_agenda','dashboard','payables','recurring_models','calendar','local_holidays'].includes(v)||HSN_PHASE3.handles(v)||HSN_PHASE4.handles(v)||HSN_PHASE5.handles(v)||HSN_PUSH.handles(v);
@@ -29,7 +33,7 @@ const type=p=>byId(data.types,p.type_id);
 const amount=p=>p.actual_amount===null||p.actual_amount===undefined?p.estimated_amount:p.actual_amount;
 const docs=p=>data.documents.filter(d=>d.payable_id===p.id);
 const missing=p=>(p.required_documents||[]).filter(t=>!docs(p).some(d=>d.document_type===t));
-function reset(){selectedPayables.clear();selectedRecurring.clear();workflowFilter='';workflowSupported=null;financeSnapshotInFlight=null;HSN_PUSH.reset();window.HSN90?.reset?.();HSN_PHASE5.reset();HSN_PHASE4.reset();HSN_DOCUMENT_READING.reset();HSN_ATTACHMENTS.reset();HSN_PHASE3.reset();version++;data={payables:[],models:[],suppliers:[],types:[],holidays:[],documents:[]};selected=null;editingRecord=null;pendingUpload=null;preview=[];document.getElementById('summary')?.replaceChildren();document.getElementById('calendar-board')?.replaceChildren();document.getElementById('finance-controls')?.replaceChildren();for(const id of ['finance-dialog','documents-dialog','preview-dialog'])document.getElementById(id)?.close();document.getElementById('finance-fields')?.replaceChildren();document.getElementById('document-list')?.replaceChildren();document.getElementById('preview-list')?.replaceChildren();}
+function reset(){filterContext='';selectedPayables.clear();selectedRecurring.clear();workflowFilter='';workflowSupported=null;financeSnapshotInFlight=null;HSN_PUSH.reset();window.HSN90?.reset?.();HSN_PHASE5.reset();HSN_PHASE4.reset();HSN_DOCUMENT_READING.reset();HSN_ATTACHMENTS.reset();HSN_PHASE3.reset();version++;data={payables:[],models:[],suppliers:[],types:[],holidays:[],documents:[]};selected=null;editingRecord=null;pendingUpload=null;preview=[];document.getElementById('summary')?.replaceChildren();document.getElementById('calendar-board')?.replaceChildren();document.getElementById('finance-controls')?.replaceChildren();for(const id of ['finance-dialog','documents-dialog','preview-dialog'])document.getElementById(id)?.close();document.getElementById('finance-fields')?.replaceChildren();document.getElementById('document-list')?.replaceChildren();document.getElementById('preview-list')?.replaceChildren();}
 async function all(table,order='created_at'){let result=[];for(let offset=0;;offset+=1000){const batch=check(await db.from(table).select('*').order(order).order('id').range(offset,offset+999));result.push(...batch);if(batch.length<1000)break;}return result;}
 // Compartilha apenas consultas SIMULTANEAS; depois de concluidas, a proxima navegacao
 // busca dados novos. Nao utiliza cache financeiro persistente ou por tempo.
@@ -39,11 +43,11 @@ async function financeSnapshot(){
  financeSnapshotInFlight=promise;
  try{return await promise;}finally{if(financeSnapshotInFlight===promise)financeSnapshotInFlight=null;}
 }
-async function loadFinance(v){if(!user)return;if(HSN_WORKSPACE.handles(v))return HSN_WORKSPACE.load(v);kind=v;$('records').className='records';$('finance-controls').className='finance-controls';const token=++version;month ||= D().today().slice(0,7);$('records').replaceChildren(el('p','Carregando seu financeiro…'));try{requireOnline();const results=await financeSnapshot();if(token!==version||view!==v||!user)return;[data.payables,data.models,data.suppliers,data.types,data.holidays,data.documents,templates]=results;
+async function loadFinance(v){if(!user)return;if(HSN_WORKSPACE.handles(v))return HSN_WORKSPACE.load(v);kind=v;restorePersonalFilters();$('records').className='records';$('finance-controls').className='finance-controls';const token=++version;month ||= D().today().slice(0,7);$('records').replaceChildren(el('p','Carregando seu financeiro…'));try{requireOnline();const results=await financeSnapshot();if(token!==version||view!==v||!user)return;[data.payables,data.models,data.suppliers,data.types,data.holidays,data.documents,templates]=results;
  // Detecta se o novo campo foi instalado no Supabase, sem gravar nada.
  if(workflowSupported===null){const probe=await db.from('payables').select('workflow_status').limit(1);workflowSupported=!probe.error;}
 try{data.paymentEvents=await all('hsn10_events');}catch{data.paymentEvents=null;}
-HSN_PHASE3.receive(data,results.slice(7,11));HSN_PHASE4.receive(data,results[11]);HSN_PHASE5.receive(data,results.slice(12,13));HSN_PUSH.receive(results.slice(13));renderFinance();if(selected)renderDocuments();HSN_PHASE3.showDailySummary();}catch(e){if(token!==version||view!==v)return;data.payables=[];$('records').replaceChildren(el('p','Não foi possível consultar. Confira fase-6-push.sql e a conexão.'));failure(e);}}
+HSN_PHASE3.receive(data,results.slice(7,11));HSN_PHASE4.receive(data,results[11]);HSN_PHASE5.receive(data,results.slice(12,13));HSN_PUSH.receive(results.slice(13));renderFinance();if(selected)renderDocuments();}catch(e){if(token!==version||view!==v)return;data.payables=[];$('records').replaceChildren(el('p','Não foi possível consultar. Confira fase-6-push.sql e a conexão.'));failure(e);}}
 
 function supplierPicker(container,suppliers,value=''){
  const wrap=el('div',undefined,'hsn-supplier-picker');
@@ -79,18 +83,21 @@ function inputField(container,key,title,value='',type='text',required=false){ret
 function hint(container,text){container.append(el('p',text,'hint'));}
 function requiredFields(container,values=['boleto']){container.append(el('h3','Documentos obrigatórios'));const group=el('div',undefined,'check-grid');Object.entries(docNames).forEach(([key,title])=>{const label=el('label',title),input=el('input');input.type='checkbox';input.name='required_documents';input.value=key;input.checked=values.includes(key);label.prepend(input);group.append(label);});container.append(group);}
 function filterControls(){const controls=$('finance-controls');controls.replaceChildren();if(['payables','calendar'].includes(kind)){
- const m=inputField(controls,'filter_month','Competência / mês',month,'month',true);m.onchange=()=>{if(m.value){month=m.value;renderFinance();}};
- const st=selectField(controls,'filter_status','Prazo / pagamento',[['','Todos'],...Object.entries(labels).map(([k,v])=>[k,v])],statusFilter);st.onchange=()=>{statusFilter=st.value;renderFinance();};
+ const extra=el('details',undefined,'practical-filter-extra'),advanced=el('div',undefined,'practical-filter-tools');extra.append(el('summary','Mais filtros e ferramentas'),advanced);
+ const m=inputField(controls,'filter_month','Competência / mês',month,'month',true);m.onchange=()=>{if(m.value){month=m.value;savePersonalFilters();renderFinance();}};
+ const st=selectField(controls,'filter_status','Prazo / pagamento',[['','Todos'],...Object.entries(labels).map(([k,v])=>[k,v])],statusFilter);st.onchange=()=>{statusFilter=st.value;savePersonalFilters();renderFinance();};
  if(kind==='payables'){
-  const steps=selectField(controls,'filter_workflow','Etapa bancária',[['','Todas as etapas'],...workflowOptions,['paid','Pago']],workflowFilter);
-  steps.onchange=()=>{workflowFilter=steps.value;renderFinance();};
+  const steps=selectField(advanced,'filter_workflow','Etapa bancária',[['','Todas as etapas'],...workflowOptions,['paid','Pago']],workflowFilter);
+  steps.onchange=()=>{workflowFilter=steps.value;savePersonalFilters();renderFinance();};
  }
- const ty=selectField(controls,'filter_type','Tipo',[['','Todos os tipos'],...data.types.map(t=>[t.id,t.name])],typeFilter);ty.onchange=()=>{typeFilter=ty.value;renderFinance();};
- if(kind==='payables'){controls.append(button('Fornecedores',()=>openFinanceRegistration('suppliers')));controls.append(button('Gerenciar tipos',()=>openFinanceRegistration('account_types')));controls.append(button('Verificar duplicidades',reviewPayableDuplicates,'secondary'));controls.append(button('Importar pagamentos CSV',()=>openFinanceRegistration('imports')));}
+ if(typeFilter&&!data.types.some(t=>t.id===typeFilter))typeFilter='';
+ const ty=selectField(controls,'filter_type','Tipo',[['','Todos os tipos'],...data.types.map(t=>[t.id,t.name])],typeFilter);ty.onchange=()=>{typeFilter=ty.value;savePersonalFilters();renderFinance();};
+ if(kind==='payables'){advanced.append(button('Fornecedores',()=>openFinanceRegistration('suppliers')));advanced.append(button('Gerenciar tipos',()=>openFinanceRegistration('account_types')));advanced.append(button('Verificar duplicidades',reviewPayableDuplicates,'secondary'));advanced.append(button('Importar pagamentos CSV',()=>openFinanceRegistration('imports')));}
  if(kind==='calendar'){
  const mode=selectField(controls,'calendar_mode','Visualização',[['month','Mês'],['list','Lista']],calendarMode);mode.onchange=()=>{calendarMode=mode.value;renderFinance();};
  const moduleSelect=selectField(controls,'module','Módulo',HSN_PHASE3.calendarOptions(),HSN_PHASE3.getCalendarModule());moduleSelect.onchange=()=>HSN_PHASE3.setCalendarModule(moduleSelect.value);
- }else{const archive=selectField(controls,'archived','Exibição',[['active','Ativas'],['archived','Arquivadas']],showArchived?'archived':'active');archive.onchange=()=>{showArchived=archive.value==='archived';renderFinance();};}
+ }else{const archive=selectField(advanced,'archived','Exibição',[['active','Ativas'],['archived','Arquivadas']],showArchived?'archived':'active');archive.onchange=()=>{showArchived=archive.value==='archived';savePersonalFilters();renderFinance();};}
+ controls.append(extra);
  }
  if(kind==='recurring_models'){
  const m=inputField(controls,'generate_month','Gerar competência',month,'month',true);m.onchange=()=>{month=m.value;};controls.append(button('Conferir e gerar mês',prepareGeneration,'primary'));hint(controls,'O app calcula vencimento e média. Você confere e confirma; nenhum valor real ou pagamento é lançado sozinho.');
@@ -166,7 +173,7 @@ function renderFinance(){document.getElementById('finance-controls')?.classList.
  }
 }
 // Painel inicial usa somente dados consultados; nenhuma rotina bancária é executada aqui.
-function goModule(next){if(busy)return;selectedPayables.clear();view=next;$('search').value='';$('hsn7-search')&&($('hsn7-search').value='');window.scrollTo(0,0);load();}
+function goModule(next){if(busy)return;selectedPayables.clear();view=next;$('search').value='';$('hsn7-search')&&($('hsn7-search').value='');window.scrollTo(0,0);return load();}
 function renderDashboard(){
  $('view-title').textContent='Seu painel';$('new').hidden=true;$('search').closest('.search-wrap').hidden=true;
  document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view==='dashboard'));
