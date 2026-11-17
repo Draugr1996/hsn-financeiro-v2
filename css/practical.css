@@ -52,6 +52,7 @@ body.hsn-practical .content button.secondary,body.hsn-practical .hsn10-dialog bu
 body.hsn-practical input,body.hsn-practical select,body.hsn-practical textarea{font-size:13px!important;border-radius:8px!important;background:var(--surface)!important;border-color:var(--line)!important;color:var(--ink)!important;min-height:40px!important}
 body.hsn-practical input[type="checkbox"],body.hsn-practical input[type="radio"]{width:18px!important;height:18px!important;min-height:0!important;accent-color:var(--accent)}
 body.hsn-practical .content .card,body.hsn-practical .content .record{border-radius:12px!important;box-shadow:none!important}
+body.hsn-practical .hsn86-bulkbar[hidden]{display:none!important}
 body.hsn-practical .hsn10-workspace{gap:18px!important;margin-top:0!important}
 body.hsn-practical .hsn10-explainer{font-size:12px!important;color:var(--muted)!important;border:0!important;padding:0!important;background:none!important;line-height:1.6!important}
 body.hsn-practical .practical-rules{order:10;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
