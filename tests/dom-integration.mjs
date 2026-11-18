@@ -18,8 +18,28 @@ const text=()=>w.document.querySelector('#records').textContent,dlg=()=>w.docume
 const passed=[];async function test(name,fn){await fn();passed.push(name);console.log('PASS',name);}
 try{
 await test('Inicialização e painel com saldo previsto',async()=>{await wait(()=>text().includes('Próximas ações'),'painel');assert.ok(w.document.querySelector('#summary').textContent.includes('1.000,00'),w.document.querySelector('#summary').textContent+' | '+JSON.stringify((await pg.query('select * from sicoob_collections')).rows)+' | '+w.document.querySelector('#finance-controls').innerHTML);});
-await test('Menu pessoal reduzido mantém recursos acessíveis',async()=>{const nav=w.document.querySelector('#topic-navigation');assert.deepEqual([...nav.children].filter(n=>n.tagName==='BUTTON').map(n=>n.dataset.view),['dashboard','payables','receivables','hotel_billing','receipts_reconciliation']);assert.ok(nav.querySelector('details [data-view=backups]'));assert.ok(nav.querySelector('details [data-view=commissions]'));});
-await test('Importações mantêm contexto do banco sem expandir configurações',async()=>{w.eval("view='imports';load();");await wait(()=>w.document.querySelector('#view-title').textContent==='Importar / exportar','importações');await new Promise(r=>setTimeout(r,20));const navigation=w.document.querySelector('#topic-navigation');assert.equal(navigation.dataset.section,'bank');assert.equal(navigation.querySelector('details').open,false);await nav('dashboard');});
+await test('Menus por setor preservam todos os destinos sem controles operacionais em configurações',async()=>{
+ const navigation=w.document.querySelector('#topic-navigation');
+ const groups=[...navigation.querySelectorAll('.nav-sector')];assert.equal(groups.length,7);
+ const views=[...navigation.querySelectorAll('[data-view]')].map(b=>b.dataset.view);assert.equal(views.length,30);assert.equal(new Set(views).size,30);
+ const sector=v=>navigation.querySelector('[data-view='+v+']').closest('.nav-sector')?.dataset.sector;
+ for(const v of ['suppliers','recurring_models','account_types','payments_agenda','alerts'])assert.equal(sector(v),'payables');
+ for(const v of ['hotel_billing','billing_send','communications','zoho_connect','message_templates'])assert.equal(sector(v),'billing');
+ for(const v of ['imports','dda','approvals'])assert.equal(sector(v),'bank');
+ assert.equal(sector('sicoob_collections'),'receivables');assert.equal(sector('commission_alerts'),'commissions');
+ assert.deepEqual([...navigation.querySelector('[data-sector=settings]').querySelectorAll('[data-view]')].map(b=>b.dataset.view),['alert_settings','push','audit','backups']);
+});
+await test('Submenu acompanha o setor atual sem abrir os demais',async()=>{
+ w.eval("view='imports';load();");await wait(()=>w.document.querySelector('#view-title').textContent==='Importar / exportar','importações');await new Promise(r=>setTimeout(r,20));
+ const navigation=w.document.querySelector('#topic-navigation');assert.equal(navigation.dataset.section,'bank');assert.equal(navigation.querySelector('#sector-bank').hidden,false);assert.equal(navigation.querySelector('#sector-settings').hidden,true);
+ await nav('sicoob_collections');await new Promise(r=>setTimeout(r,20));assert.equal(navigation.dataset.section,'receivables');assert.equal(navigation.querySelector('#sector-receivables').hidden,false);assert.equal(navigation.querySelector('#sector-bank').hidden,true);
+ await nav('dashboard');
+});
+await test('Expandir ferramentas não muda a tela e Escape devolve o foco',async()=>{
+ const navigation=w.document.querySelector('#topic-navigation'),control=navigation.querySelector('[aria-controls=sector-settings]');
+ control.click();assert.equal(control.getAttribute('aria-expanded'),'true');assert.equal(navigation.querySelector('#sector-settings').hidden,false);assert.equal(w.document.querySelector('#view-title').textContent,'Meu dia');
+ navigation.querySelector('[data-view=backups]').focus();w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(control.getAttribute('aria-expanded'),'false');assert.equal(w.document.activeElement,control);
+});
 await test('Atalho abre ficha agrupada sem criar nova dívida antes de salvar',async()=>{const before=(await pg.query('select count(*)::int n from sicoob_collections')).rows[0].n;button('+ Novo faturamento').click();await wait(()=>dlg(),'ficha');assert.deepEqual([...dlg().querySelectorAll('legend')].map(n=>n.textContent),['Dados da cobrança','Hospedagem','Documentos e conferência']);button('Fechar',dlg()).click();assert.equal((await pg.query('select count(*)::int n from sicoob_collections')).rows[0].n,before);});
 await test('Período e empresa lembrados por tela sem contaminar painel',async()=>{await nav('receivables');const start=w.document.querySelector('#finance-controls [name=start]');start.value='2025-01-01';start.dispatchEvent(new w.Event('change'));const select=[...w.document.querySelectorAll('#finance-controls select')].find(s=>s.options[0].text==='Todas'&&[...s.options].some(o=>o.value==='Empresa Alfa'));select.value='Empresa Alfa';select.dispatchEvent(new w.Event('change'));await nav('dashboard');assert.notEqual(w.document.querySelector('#finance-controls [name=start]').value,'2025-01-01');await nav('receivables');assert.equal(w.document.querySelector('#finance-controls [name=start]').value,'2025-01-01');assert.equal(w.document.querySelector('#finance-controls select').value,'Empresa Alfa');});
 await test('Formulário registra recebimento parcial sem alterar dívida',async()=>{await nav('receivables');button('Registrar recebimento').click();await wait(()=>dlg(),'dialog');fill('amount','300');fill('date','2026-11-10');fill('ref','PIX-TESTE-001');fill('reason','Crédito bancário confirmado com a empresa');dlg().querySelector('[type=checkbox]').checked=true;submit();await wait(()=>!dlg()&&text().includes('Parcial'),'parcial');assert.equal((await pg.query('select paid_amount from sicoob_collections')).rows[0].paid_amount,'300.00');});

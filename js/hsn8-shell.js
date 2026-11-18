@@ -21,7 +21,7 @@ function syncView(){
  const active=nav?.querySelector('[data-view].active');const view=active?.dataset.view||'payables';
  document.documentElement.dataset.hsnView=view;
  const crumbTitle=$('hsn8-breadcrumb-title');if(crumbTitle)crumbTitle.textContent=title.textContent||'Financeiro';
- const crumbSection=$('hsn8-breadcrumb-section');if(crumbSection)crumbSection.textContent=active?.closest('.nav-topic')?.querySelector('.topic-copy strong')?.textContent||'Financeiro';
+ const crumbSection=$('hsn8-breadcrumb-section');if(crumbSection)crumbSection.textContent=active?.closest('.nav-sector')?.getAttribute('aria-label')||'Financeiro';
 }
 if(nav){nav.querySelectorAll('[data-view]').forEach(b=>{const el=b.querySelector('.nav-icon');if(el&&!el.querySelector('svg')&&navIcons[b.dataset.view])el.innerHTML=svg(navIcons[b.dataset.view]);});
  new MutationObserver(syncView).observe(nav,{attributes:true,subtree:true,attributeFilter:['class']});}
