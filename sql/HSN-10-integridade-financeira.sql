@@ -36,7 +36,7 @@ alter table public.sicoob_collections add column if not exists check_in date;
 alter table public.sicoob_collections add column if not exists check_out date;
 alter table public.sicoob_collections add column if not exists nf_number text not null default '';
 alter table public.sicoob_collections add column if not exists billing_documents jsonb not null default '{}';
-alter table public.sicoob_collections add column if not exists required_billing_docs jsonb not null default '["extrato","voucher","nota_fiscal","boleto"]';
+alter table public.sicoob_collections add column if not exists required_billing_docs jsonb not null default '[]';
 alter table public.sicoob_collections add column if not exists billing_sent_at timestamptz;
 alter table public.sicoob_collections add column if not exists billing_send_reference text;
 -- Não inventa data de pagamentos antigos. Sem data, ficam fora do caixa por período.
@@ -290,14 +290,11 @@ end $$;
 
 create or replace function public.hsn10_mark_billing_sent(p_id uuid,p_expected_updated_at timestamptz,p_reference text)
 returns void language plpgsql security definer set search_path=public,pg_temp as $$
-declare r public.sicoob_collections; doc text;
+declare r public.sicoob_collections;
 begin
  select * into r from public.sicoob_collections where id=p_id and owner_id=auth.uid() for update;
  if not found or r.updated_at is distinct from p_expected_updated_at or r.cancelled_at is not null then raise exception 'Título indisponível/alterado.';end if;
  if length(trim(r.guest_name))=0 or length(trim(r.stay_reference))=0 or r.check_in is null or r.check_out is null or length(trim(coalesce(p_reference,'')))<8 then raise exception 'Complete hospedagem e referência do envio confirmado.';end if;
- for doc in select jsonb_array_elements_text(r.required_billing_docs) loop
-  if length(trim(coalesce(r.billing_documents->>doc,'')))=0 then raise exception 'Documento faltante: %',doc;end if;
- end loop;
  update public.sicoob_collections set billing_sent_at=now(),billing_send_reference=p_reference where id=p_id and owner_id=auth.uid();
 end $$;
 

@@ -619,7 +619,7 @@ function prepareHotelPaymentsImport(matrix){
      competence:due.slice(0,7)+'-01',original_due_date:due,due_date:due,due_rule:'keep',
      estimated_amount:amount,actual_amount:amount,document_number:'',barcode:'',notes,
      workflow_status:status.workflow,workflow_note:'Status informado na importação: '+status.original,
-     bank_scheduled_date:status.wasScheduled?payUntil:null,required_documents:['boleto'],payment_status:'open',paid_date:null};
+     bank_scheduled_date:status.wasScheduled?payUntil:null,required_documents:[],payment_status:'open',paid_date:null};
     entry.error=already?'Conta já importada anteriormente (identificador encontrado).':'';
     entry.suspects=R().suspects(entry.payload,existing(),data.suppliers);
     const clash=R().blocking(entry.payload,[...data.payables,...importRows.filter(x=>x.payload).map(x=>x.payload)],data.suppliers);

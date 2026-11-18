@@ -12,12 +12,12 @@
  function status(p,kind='payable',day=today()){
   const b=balance(p,kind);if(b.cancelled)return 'cancelled';if(b.total>0&&b.pending===0)return 'paid';if(b.paid>0)return 'partial';return p.due_date<day?'overdue':p.due_date===day?'today':'open';
  }
- function missingBilling(p){const required=p.required_billing_docs||['extrato','voucher','nota_fiscal','boleto'];const docs=p.billing_documents||{};return required.filter(k=>!String(docs[k]||'').trim());}
+ // Compatibilidade com fichas antigas: documentos podem ser informados, mas não são exigidos.
+ function missingBilling(){return [];}
  function billingState(p,day=today()){
   if(p.cancelled_at)return {key:'cancelled',label:'Cancelado'};
   if(p.billing_sent_at)return {key:'sent',label:'Faturamento enviado'};
   if(!p.stay_reference||!p.guest_name||!p.check_in||!p.check_out)return {key:'stay',label:'Completar hospedagem'};
-  const missing=missingBilling(p);if(missing.length)return {key:'documents',label:'Faltam: '+missing.join(', ')};
   return {key:p.check_out<=day?'pending':'ready',label:p.check_out<day?'Envio atrasado desde o check-out':p.check_out===day?'Enviar hoje · check-out':'Pronto para envio'};
  }
  function summary(payables,receivables,events,{start='0001-01-01',end='9999-12-31',company='',day=today()}={}){

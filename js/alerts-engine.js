@@ -12,7 +12,6 @@ function payables(accounts,documents,config={},today=HSN_DATES.today()){
  if(unpaid){if(diff<0)push(p,'overdue',Math.abs(diff)+' dia(s) de atraso','danger');else if(diff===0)push(p,'today','Vence hoje','warning');else if(s.lead_days.includes(diff))push(p,'upcoming','Vence em '+diff+' dia(s)','info');
  if(s.missing_bill&&p.arrival_day){const arrival=HSN_DATES.monthDay(month,p.arrival_day);if(today>arrival&&!files.some(d=>d.document_type==='boleto'))push(p,'missing_bill','Boleto esperado desde '+HSN_DATES.br(arrival),'warning');}
  if(s.waiting_approval&&p.approval_status==='waiting')push(p,'approval','Aguardando aprovação externa','warning');}
- if(s.missing_documents){const missing=(p.required_documents||[]).filter(k=>!files.some(d=>d.document_type===k));if(missing.length)push(p,'documents','Faltam: '+missing.map(k=>({boleto:'boleto',nota_fiscal:'nota fiscal',comprovante:'comprovante',outros:'outros'}[k]||k)).join(', '),'warning');}
  if(s.variation_alert){const v=variation(accounts,p,s.variation_percent);if(v){const change=Number.isFinite(v.increase)?v.increase.toFixed(1).replace('.',',')+'%':'média anterior zero';push(p,'variation','Valor acima da média: '+change+' (limite '+s.variation_percent+'%)','warning');out[out.length-1].variation=v;}}
  }
  const weight={danger:0,warning:1,info:2};return out.sort((a,b)=>weight[a.severity]-weight[b.severity]||a.date.localeCompare(b.date)||a.title.localeCompare(b.title));
