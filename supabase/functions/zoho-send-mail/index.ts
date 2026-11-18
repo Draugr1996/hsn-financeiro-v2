@@ -330,8 +330,9 @@ serveIsolated(async (request: Request) => {
     if((request.headers.get("content-type")||"").includes("multipart/form-data"))return await sendHandler(request);
     const body = await request.json().catch(() => ({}));
 
-    if(body.action)return await sendHandler(new Request(request.url,{method:"POST",headers:request.headers,body:JSON.stringify(body)}));
-    const mode = body?.mode ?? "setup";
+    // A identificação só consulta a conta; nunca deve cair na rota de envio.
+    if(body.action && body.action !== "identify_account")return await sendHandler(new Request(request.url,{method:"POST",headers:request.headers,body:JSON.stringify(body)}));
+    const mode = body.action === "identify_account" ? "setup" : body?.mode ?? "setup";
 
     // 9.9: cobranças manuais usam prévia assinada, histórico e trava contra duplicidade.
     if(mode==='preview'||mode==='send_individual'){
