@@ -27,14 +27,14 @@ window.HSN_WORKSPACE=(()=>{'use strict';
   if(!ready||active!==next){active=next;restoreFilters();}
   const token=++loading;ready=false;setup('Carregando…');
   try{
-   const [receivables,payables,events,bank,imports,audit,suppliers]=await Promise.all(['sicoob_collections','payables','hsn10_events','hsn10_bank_transactions','hsn10_import_batches','hsn10_audit','suppliers'].map(all));
+   const [receivables,payables,events,bank,imports,audit,suppliers,dda]=await Promise.all(['sicoob_collections','payables','hsn10_events','hsn10_bank_transactions','hsn10_import_batches','hsn10_audit','suppliers','dda_charges'].map(all));
    if(token!==loading||!user||view!==v)return;
-   state={receivables,payables:payables.map(p=>({...p,company_name:suppliers.find(s=>s.id===p.supplier_id)?.trade_name||suppliers.find(s=>s.id===p.supplier_id)?.legal_name||''})),events,bank,imports,audit};ready=true;
+   state={dda,suppliers,receivables,payables:payables.map(p=>({...p,company_name:suppliers.find(s=>s.id===p.supplier_id)?.trade_name||suppliers.find(s=>s.id===p.supplier_id)?.legal_name||''})),events,bank,imports,audit};ready=true;
    start ||= M().today().slice(0,7)+'-01';end ||= HSN_DATES.monthDay(start.slice(0,7),31);render();
   }catch(e){if(token!==loading)return;setup('Ativar controle financeiro');$('records').append(el('div','Para usar o painel integrado, execute sql/HSN-10-integridade-financeira.sql no Supabase após o backup. Os módulos anteriores continuam disponíveis. Detalhe: '+e.message,'hsn10-warning'));}
  }
  function setup(title){
-  $('view-title').textContent=title;$('view-description').textContent=({dashboard:'Seus saldos e o que precisa resolver.',receivables:'Confira cada título, seus recebimentos e o saldo pendente.',hotel_billing:'Hospedagem, documentos e envio em uma única ficha.',receipts_reconciliation:'Importe o extrato e confira o dinheiro recebido.'})[active]||'Consulte seus registros e o histórico.';$('new').hidden=true;$('search').closest('.search-wrap').hidden=true;
+  $('view-title').textContent=title;$('view-description').textContent=({dashboard:'Seus saldos e o que precisa resolver.',receivables:'Confira cada título, seus recebimentos e o saldo pendente.',hotel_billing:'Hospedagem, documentos e envio em uma única ficha.',receipts_reconciliation:'Compare o extrato com contas a pagar, recebimentos e DDA.'})[active]||'Consulte seus registros e o histórico.';$('new').hidden=true;$('search').closest('.search-wrap').hidden=true;
   for(const id of ['summary','finance-controls','records','calendar-board','commission-calendar-summary'])$(id).replaceChildren();
   $('records').className='records hsn10-workspace';$('summary').classList.remove('sicoob-summary');
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===active));
@@ -53,7 +53,7 @@ window.HSN_WORKSPACE=(()=>{'use strict';
  }
  function list(){return state.receivables.filter(r=>(!company||M().norm(r.company)===M().norm(company))&&r.due_date>=start&&r.due_date<=end&&(!filter||M().status(r,'receivable')===filter)&&M().norm([r.company,r.guest_name,r.reference,r.external_reference,r.stay_reference,r.nf_number].join(' ')).includes(M().norm(search)));}
  function stat(label,value,help,cls=''){const c=el('article',null,'stat '+cls);c.append(el('small',label),el('strong',money(value)),el('span',help,'muted'));$('summary').append(c);}
- function render(){if(!ready)return;setup(({dashboard:'Meu dia',receivables:'Contas a receber',hotel_billing:'Faturamento do hotel',receipts_reconciliation:'Conferência de recebimentos',financial_history:'Histórico financeiro'})[active]);controls();drawContent();}
+ function render(){if(!ready)return;setup(({dashboard:'Meu dia',receivables:'Contas a receber',hotel_billing:'Faturamento do hotel',receipts_reconciliation:'Conciliação bancária',financial_history:'Histórico financeiro'})[active]);controls();drawContent();}
  function drawContent(){
   $('records').replaceChildren();$('summary').replaceChildren();
   if(start>end){$('records').append(el('p','A data inicial deve ser anterior à final.','hsn10-warning'));return;}
@@ -142,14 +142,19 @@ window.HSN_WORKSPACE=(()=>{'use strict';
  function reconciliation(){
   const tabs=el('nav',null,'practical-tabs');tabs.setAttribute('aria-label','Banco e importações');for(const [label,target]of [['Planilhas e pagamentos','imports'],['Cobranças Sicoob','sicoob_collections'],['DDA','dda']])tabs.append(btn(label,()=>navigate(target)));$('records').append(tabs);
   const controls=el('div',null,'actions'),input=el('input');input.type='file';input.accept='.csv,.ofx';input.setAttribute('aria-label','Importar extrato bancário');input.onchange=async()=>{try{await importBank(input.files?.[0]);}catch(e){failure(e);}input.value='';};controls.append(el('strong','Extrato bancário CSV / OFX'),input);$('records').append(controls,el('p','Importe e confira créditos e débitos. A conciliação exige conta, referência, data e liquidação identificadas. Não faz baixa por semelhança.','hsn10-explainer'));
+  const matches=HSN97.persistedMatches(state.bank.filter(b=>!b.payment_id),state.dda,state.payables,state.suppliers,M().today());
+  const overview=el('section',null,'practical-panel');overview.append(el('h2','DDA e situação das contas'),el('p','Situação dos DDA no período e fornecedor selecionados. Pagos e programados dependem da conta vinculada; informação somente do arquivo exige revisão.'));
+  const stats={paid:0,scheduled:0,open:0,review:0};
+  for(const d of state.dda.filter(d=>!d.archived&&d.due_date>=start&&d.due_date<=end&&(!company||M().norm(d.supplier_name)===M().norm(company)||state.payables.some(p=>p.id===(d.converted_payable_id||d.linked_payable_id)&&M().norm(p.company_name)===M().norm(company))))){const insight=HSN_DDA96.classify(d,{payables:state.payables,suppliers:state.suppliers});stats[insight.key]=(stats[insight.key]||0)+1;}
+  overview.append(el('p','Pagos no HSN: '+stats.paid+' · Programados no HSN: '+stats.scheduled+' · Em aberto / sem baixa: '+stats.open+' · A revisar: '+stats.review));$('records').append(overview);
   const t=table(['Data / conta','Histórico / referência','Banco','Conferência']);
   for(const tx of state.bank.filter(t=>t.transaction_date>=start&&t.transaction_date<=end).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date))){
-   const tr=el('tr'),desc=el('td');desc.append(el('strong',tx.description),el('small',tx.bank_reference));const act=el('td');
+   const tr=el('tr'),desc=el('td');desc.append(el('strong',tx.description),el('small',tx.bank_reference));const act=el('td'),match=matches.get(tx.id);if(match){act.append(el('strong',match.label),el('small',match.reason));if(match.dda)act.append(el('small','DDA: '+match.dda.supplier_name+' · '+(match.dda.document_number||'Sem número de documento')));}
    if(tx.payment_id){const e=state.events.find(e=>e.id===tx.payment_id);const p=e&&(e.kind==='receivable'?state.receivables:state.payables).find(p=>p.id===e.target_id);if(company&&M().norm(e?.kind==='receivable'?p?.company:p?.company_name)!==M().norm(company))continue;act.append(el('strong','Conciliado · '+(p?.company||p?.title||'')),btn('Ver baixa',()=>paymentHistory(e.kind,p)));}
    else if(!tx.settled||tx.transaction_date>M().today())act.append(el('span','Sem liquidação comprovada · conferir origem','hsn10-warning'));
    else{
     const kind=tx.amount>0?'receivable':'payable',targets=(kind==='receivable'?state.receivables.filter(p=>(!company||M().norm(p.company)===M().norm(company))):state.payables.filter(p=>(!company||M().norm(p.company_name)===M().norm(company))&&!p.archived)).filter(p=>{const b=M().balance(p,kind);return !b.cancelled&&b.pending>0&&!b.estimated;});
-    const options=[['','Selecione o título após conferir'],...targets.map(p=>[p.id,(p.company||p.title)+' · '+(p.stay_reference||p.document_number||p.reference||'')+' · Saldo '+money(M().balance(p,kind).pending)])];let picked='';select(act,'Vincular ao lançamento',options,'',v=>{picked=v;});
+    const options=[['','Selecione o título após conferir'],...targets.map(p=>[p.id,(p.company||p.title)+' · '+(p.stay_reference||p.document_number||p.reference||'')+' · Saldo '+money(M().balance(p,kind).pending)])];let picked=match?.key==='suggested'&&targets.some(p=>p.id===match.payable.id)?match.payable.id:'';select(act,'Vincular ao lançamento',options,picked,v=>{picked=v;});
     act.append(btn('Conferir e conciliar',()=>{const p=targets.find(p=>p.id===picked);if(!p)throw Error('Selecione a obrigação correspondente.');if(M().cents(Math.abs(tx.amount))>M().cents(M().balance(p,kind).pending))throw Error('Divergência: valor bancário maior que o saldo. Confira juros, descontos ou título selecionado.');payment(kind,p,tx);}));
     const exact=targets.filter(p=>M().cents(M().balance(p,kind).pending)===M().cents(Math.abs(tx.amount)));act.append(el('small',exact.length+' saldo(s) de mesmo valor · vínculo exige conferência de identidade'));
    }tr.append(el('td',tx.transaction_date+' · '+tx.account),desc,el('td',money(tx.amount)),act);t.body.append(tr);

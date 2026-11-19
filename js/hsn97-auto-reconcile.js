@@ -32,7 +32,8 @@
   if(directId){const p=accounts.find(x=>x.id===directId);return p&&cents(d.amount)===cents(payableAmount(p))?[p]:[];}
   return accounts.filter(p=>strongDdaAccount(d,p,s));
  }
- const containsDigits=(text,ident)=>ident.length>=6&&digits(text).includes(ident);
+ // Compara identificadores completos: um número de documento não pode ser um trecho do CNPJ.
+ const containsDigits=(text,ident)=>ident.length>=6&&(String(text||'').match(/\d(?:[\d.\s/\-]*\d)?/g)||[]).some(token=>digits(token)===ident);
  function hasBankIdentity(tx,d,p,s){
   const bankText=[tx.description,tx.reference].join(' '),supplier=(s instanceof Map?s.get(p.supplier_id):s.find(x=>x.id===p.supplier_id))||{};
   const barcode=digits(d.barcode),document=digits(d.document_number),tax=digits(d.tax_id);
@@ -114,5 +115,44 @@
   for(const r of auto)if(accountCount.get(r.payable.id)>1){r.status='review';r.reason='A mesma conta aparece em vários débitos; conferir duplicidade.';}
   return rows;
  }
- root.HSN97={reconcile,transactionIdentity,strongDdaAccount,hasBankIdentity,referenceIsStable};
+ // Conciliação integrada: usa os movimentos persistidos e o saldo do livro de baixas.
+ // Sugestão é apenas seleção inicial para conferência; não registra pagamento.
+ function persistedMatches(bankRows,dda,accounts,suppliers,day){
+  const byId=new Map((accounts||[]).map(p=>[p.id,p])),vendors=new Map((suppliers||[]).map(s=>[s.id,s]));
+  const charges=(dda||[]).filter(d=>!d.archived),pairs=[];
+  for(const d of charges){
+   const linked=d.converted_payable_id||d.linked_payable_id;
+   const candidates=linked?[byId.get(linked)].filter(Boolean):(accounts||[]).filter(p=>strongDdaAccount(d,{...p,paid_amount:0},vendors));
+   for(const p of candidates)pairs.push({d,p});
+  }
+  const out=new Map();
+  for(const bank of bankRows||[]){
+   if(!(Number(bank.amount)<0))continue;
+   const tx={date:bank.transaction_date,description:bank.description,reference:bank.bank_reference};
+   const found=pairs.map(x=>({...x,evidence:hasBankIdentity(tx,x.d,x.p,vendors)})).filter(x=>x.evidence);
+   let r={key:'review',label:'Conferir manualmente',reason:'O extrato não identifica o documento e o beneficiário. Coincidência de valor não confirma o vínculo.',payable:null,dda:null};
+   if(found.length>1)r={...r,label:'Vínculo ambíguo',reason:'Mais de um DDA/conta tem identificação compatível. Nenhuma conta foi selecionada.'};
+   else if(found.length===1){
+    const x=found[0],p=x.p,b=root.HSN_MONEY.balance(p),scheduled=['scheduled','scheduled_signature'].includes(p.workflow_status);
+    r={...r,payable:p,dda:x.d,evidence:x.evidence};
+    if(b.cancelled||p.archived||['awaiting_signature','scheduled_signature'].includes(p.workflow_status)||p.approval_status==='waiting')r={...r,key:'blocked',label:scheduled?'Programado · assinatura pendente':'Conta bloqueada',reason:'Confirme a autorização bancária antes de registrar pagamento.'};
+    else if(b.pending===0&&b.total>0)r={...r,key:'paid',label:'Conta já paga no HSN',reason:'A conta está quitada. Confira o histórico para não registrar o mesmo pagamento novamente.'};
+    else if(!bank.settled||bank.transaction_date>day)r={...r,key:scheduled?'scheduled':'review',label:scheduled?'Programado no HSN · sem liquidação confirmada':'Sem liquidação comprovada',reason:'Programação ou data futura não comprova pagamento.'};
+    else if(b.estimated||!validAmount(bank.amount*-1)||cents(Math.abs(bank.amount))!==cents(b.pending))r={...r,key:'divergence',label:'Divergência de valor',reason:'Valor bancário '+Math.abs(Number(bank.amount)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})+'; saldo da conta '+b.pending.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})+'. Confira pagamento parcial, juros ou desconto.'};
+    else if(cents(x.d.amount)!==cents(b.total))r={...r,key:'divergence',label:'DDA e conta com valores diferentes',reason:'Confira o valor original do título e da conta antes de conciliar.'};
+    else if(dayDiff(bank.transaction_date,p.bank_scheduled_date||x.d.due_date||p.due_date)<-10||dayDiff(bank.transaction_date,p.bank_scheduled_date||x.d.due_date||p.due_date)>90)r={...r,key:'divergence',label:'Data fora do período esperado',reason:'Documento compatível, mas a data exige conferência manual.'};
+    else r={...r,key:'suggested',label:'DDA e conta identificados',reason:x.evidence+'. Valor e saldo conferem. Revise e confirme a baixa.'};
+   }else{
+    const unmatched=charges.filter(d=>!d.converted_payable_id&&!d.linked_payable_id&&hasBankIdentity(tx,d,{supplier_id:null},vendors));
+    if(unmatched.length===1)r={...r,key:'no_account',label:'DDA ainda sem conta identificada',dda:unmatched[0],reason:'Confira ou converta este DDA antes de registrar o pagamento.'};
+   }
+   out.set(bank.id,r);
+  }
+  const suggestions=[...out.values()].filter(r=>r.key==='suggested'),counts=new Map();
+  for(const r of suggestions)counts.set(r.payable.id,(counts.get(r.payable.id)||0)+1);
+  for(const r of suggestions)if(counts.get(r.payable.id)>1)Object.assign(r,{key:'review',label:'Conta em mais de um débito',reason:'Confira repetição ou pagamentos parciais. Nenhuma sugestão foi selecionada.'});
+  return out;
+ }
+
+ root.HSN97={persistedMatches,reconcile,transactionIdentity,strongDdaAccount,hasBankIdentity,referenceIsStable};
 })(window);

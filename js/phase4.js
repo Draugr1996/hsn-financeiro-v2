@@ -297,7 +297,6 @@ function openBatchConvert(){
  if(busy)return;
  const chosen=selectedVisibleDda();const eligible=chosen.filter(convertEligible);
  if(!eligible.length){notice('Selecione boletos conferidos e não convertidos. Use Conferir selecionados antes de converter.',true);return;}
- if(!data.suppliers.length||!data.types.length){notice('Cadastre fornecedores e tipos de conta antes de converter DDA.',true);return;}
  const ui=getBatchForm('Converter DDA em contas a pagar',eligible.length+' título(s) aptos. Revise o fornecedor, tipo e competência de cada conta antes de criar os lançamentos.','Criar '+eligible.length+' conta(s)');
  const total=eligible.reduce((sum,c)=>sum+Number(c.amount||0),0);
  ui.content.append(el('p',eligible.length+' boleto(s) · '+money(total)+' · '+(chosen.length-eligible.length)+' selecionado(s) não conferido(s) ou já convertido(s) serão ignorados.','hsn-batch-banner'));
@@ -305,6 +304,8 @@ function openBatchConvert(){
  bulk.append(el('h3','Preenchimento rápido'));
  const defType=batchSelect(bulk,'default_type','Tipo para todos',[['','Escolha um tipo'],...data.types.map(t=>[t.id,t.name])],'',false);
  defType.onchange=()=>ui.content.querySelectorAll('[data-batch-field="type_id"]').forEach(input=>input.value=defType.value);
+ const supplierControls=[];
+ ddaCatalogTools(bulk,eligible,supplierControls,defType,(types,value)=>{ui.content.querySelectorAll('[data-batch-field="type_id"]').forEach(select=>{const prior=select.value;select.replaceChildren(new Option('Selecione o tipo',''),...types.map(t=>new Option(t.name,t.id)));select.value=prior||value;});});
  const defRule=batchSelect(bulk,'default_rule','Regra de vencimento para todos',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep',false);
  defRule.onchange=()=>ui.content.querySelectorAll('[data-batch-field="due_rule"]').forEach(input=>input.value=defRule.value);
  bulk.append(el('p','Os campos preenchidos aqui podem ser alterados individualmente abaixo.','muted'));ui.content.append(bulk);
@@ -312,7 +313,7 @@ function openBatchConvert(){
   const section=batchItemShell(c),grid=el('div',undefined,'hsn-batch-grid');
   const match=ddaSupplierMatch(c.supplier_name,c.tax_id);
   const supplierId=c.supplier_id||match?.id||'';
-  batchSelect(grid,'supplier_id','Fornecedor',[['','Selecione o fornecedor'],...data.suppliers.map(s=>[s.id,supplierLabel(s)])],supplierId);
+  supplierControls.push([batchSelect(grid,'supplier_id','Fornecedor',[['','Selecione o fornecedor'],...data.suppliers.map(s=>[s.id,supplierLabel(s)])],supplierId),c]);
   batchSelect(grid,'type_id','Tipo de conta',[['','Selecione o tipo'],...data.types.map(t=>[t.id,t.name])],'');
   const compLabel=el('label','Competência');const comp=el('input');comp.type='month';comp.required=true;comp.value=c.due_date.slice(0,7);comp.dataset.batchField='competence';compLabel.append(comp);grid.append(compLabel);
   batchSelect(grid,'due_rule','Vencimento',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep');
@@ -423,7 +424,36 @@ async function saveDda(fd){const p={};for(const k of ['title','supplier_name','n
  if(!p.title||!p.supplier_name)throw Error('Descrição e fornecedor obrigatórios.');if(p.tax_id&&!/^(?:[0-9]{11}|[A-Z0-9]{12}[0-9]{2})$/.test(p.tax_id))throw Error('Confira CPF/CNPJ: CPF com 11 dígitos ou CNPJ com 14 posições.');const hits=R().suspects({...p,id:editing?.id},existing(),data.suppliers);failIfDuplicate({...p,id:editing?.id},dda);if(hits.length&&!confirm('Possível duplicidade:\n'+hits.map(h=>h.record.module+' · '+h.record.title+' · '+h.reasons.join(', ')).join('\n')+'\nSalvar mesmo assim?'))return false;await persist('dda_charges',editing,p);try{const saved=await captureSuppliersFromDda([p]);if(saved.problems.length)console.warn('Captura fornecedor DDA:',saved.problems);}catch(e){console.warn('Fornecedor não cadastrado automaticamente:',e);}return true;}
 async function reviewDda(c){const issues=ddaIssues(c);if(!confirm((issues.length?'ATENÇÃO: confira estes alertas com o documento original:\n'+issues.join('\n')+'\n\n':'')+'Confirmar que verificou fornecedor, valor, vencimento e documento? Isso não registra pagamento.'))return;await operation(async()=>{await persist('dda_charges',c,{reviewed:true,reviewed_date:D().today()});await HSN_FINANCE.load(view);notice('DDA conferido. Agora pode converter após revisar a conta.');});}
 async function archiveDda(c){if(!confirm((c.archived?'Restaurar':'Arquivar')+' '+c.title+'? A conta vinculada não será alterada.'))return;await operation(async()=>{await persist('dda_charges',c,{archived:!c.archived});await HSN_FINANCE.load(view);});}
-function convertForm(c){if(!data.suppliers.length||!data.types.length){notice('Cadastre fornecedor e tipo antes de converter.',true);return;}if(!openForm('Converter DDA em conta a pagar','convert',c))return;const box=$('phase4-fields');box.append(el('p',c.title+' · '+money(c.amount)+' · vence '+D().br(c.due_date),'hint'));const matched=ddaSupplierMatch(c.supplier_name,c.tax_id);select4(box,'supplier_id','Fornecedor da conta',[['','Selecione'],...data.suppliers.map(s=>[s.id,supplierLabel(s)])],c.supplier_id||matched?.id||'',true);select4(box,'type_id','Tipo',[['','Selecione'],...data.types.map(t=>[t.id,t.name])],'',true);field4(box,'competence','Competência',c.due_date.slice(0,7),'month',true);select4(box,'due_rule','Fim de semana / feriado',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep',true);box.append(el('p','Após confirmar, uma conta independente será criada com valor real, documentos obrigatórios e situação aberta. Não marca pagamento nem anexa documento automaticamente.','muted'));$('phase4-dialog').showModal();}
+function ddaCatalogTools(container,charges,supplierControls,typeControl,onType){
+ container.append(button('Cadastrar tipo de conta aqui',async()=>{
+  await HSN_FINANCE.createType(typeControl);
+  const types=HSN_FINANCE.snapshot().types;data.types=types;
+  if(onType)onType(types,typeControl.value);
+ }));
+ container.append(button('Cadastrar fornecedores destes DDA',()=>operation(async()=>{
+  const result=await captureSuppliersFromDda(charges);
+  data.suppliers=check(await db.from('suppliers').select('*').eq('owner_id',user.id));
+  for(const [select,charge]of supplierControls){
+   const prior=select.value,match=ddaSupplierMatch(charge.supplier_name,charge.tax_id);
+   select.replaceChildren(new Option('Selecione o fornecedor',''),...data.suppliers.map(s=>new Option(supplierLabel(s),s.id)));
+   select.value=data.suppliers.some(s=>s.id===prior)?prior:match?.id||'';
+  }
+  notice(captureSummary(result),result.problems.length>0);
+ })));
+ if(!data.types.length)container.append(el('p','Nenhum tipo cadastrado. Use “Cadastrar tipo de conta aqui” e informe a categoria desta despesa.','hint'));
+}
+function convertForm(c){
+ if(!openForm('Converter DDA em conta a pagar','convert',c))return;
+ const box=$('phase4-fields');box.append(el('p',c.title+' · '+money(c.amount)+' · vence '+D().br(c.due_date),'hint'));
+ const matched=ddaSupplierMatch(c.supplier_name,c.tax_id);
+ const supplier=select4(box,'supplier_id','Fornecedor da conta',[['','Selecione'],...data.suppliers.map(s=>[s.id,supplierLabel(s)])],c.supplier_id||matched?.id||'',true);
+ const type=select4(box,'type_id','Tipo de conta',[['','Selecione'],...data.types.map(t=>[t.id,t.name])],'',true);
+ ddaCatalogTools(box,[c],[[supplier,c]],type);
+ field4(box,'competence','Competência',c.due_date.slice(0,7),'month',true);
+ select4(box,'due_rule','Fim de semana / feriado',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep',true);
+ box.append(el('p','A conversão cria uma conta aberta vinculada a este DDA. Anexos são opcionais; pagamento e programação não são confirmados pela conversão.','muted'));
+ $('phase4-dialog').showModal();
+}
 async function saveConvert(fd){const c=editing,supplierId=String(fd.get('supplier_id')),typeId=String(fd.get('type_id')),competence=R().competence(fd.get('competence')),rule=String(fd.get('due_rule'));const due=D().adjust(c.due_date,rule,data.holidays),candidate={...c,supplier_id:supplierId,original_due_date:c.due_date,actual_amount:c.amount};const hits=R().suspects(candidate,data.payables.map(p=>({...p,module:'Contas'})),data.suppliers);failIfDuplicate(candidate,check(await db.from('payables').select('*').eq('owner_id',user.id)));if(hits.length&&!confirm('Há conta semelhante:\n'+hits.map(h=>h.record.title+' · '+h.reasons.join(', ')).join('\n')+'\nConverter mesmo assim?'))return false;if(!confirm('Criar conta de '+money(c.amount)+' com vencimento '+D().br(due)+' na competência '+competence.slice(0,7)+'?'))return false;check(await db.rpc('convert_dda_to_payable',{p_id:c.id,p_expected_updated_at:c.updated_at,p_supplier_id:supplierId,p_type_id:typeId,p_competence:competence,p_due_rule:rule}));return true;}
 async function saveForm(e){e.preventDefault();await operation(async()=>{const done=formMode==='convert'?await saveConvert(new FormData(e.target)):await saveDda(new FormData(e.target));if(!done)return;$('phase4-dialog').close();await HSN_FINANCE.load(view);notice(formMode==='convert'?'DDA convertido em conta a pagar, sem marcar pagamento.':'DDA salvo, aguardando conferência.');});}
 const libs={xlsx:'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',pdf:'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',table:'https://cdn.jsdelivr.net/npm/jspdf-autotable@5.0.8/dist/jspdf.plugin.autotable.min.js'};const promises={};
