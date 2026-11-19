@@ -803,8 +803,80 @@ function prepareImport(sheetName,matrix,sicoobItems=null){try{const source=sicoo
 }else{const typeMatches=data.types.filter(t=>R().normalize(t.name)===R().normalize(get('tipo')));if(typeMatches.length!==1)throw Error('Tipo não cadastrado ou ambíguo');const estimated=get('valor_estimado'),actual=get('valor_real');payload={title:description,supplier_id:matchSupplier(supplierName,taxId),type_id:typeMatches[0].id,competence:R().competence(get('competencia')),original_due_date:date,due_date:date,due_rule:'keep',estimated_amount:estimated!==''?R().currency(estimated):actual!==''?R().currency(actual):0,actual_amount:actual!==''?R().currency(actual):null,document_number:String(get('numero_documento')||''),barcode,notes:String(get('observacoes')||'')};if(estimated===''&&actual==='')throw Error('Informe valor estimado ou real');}entry.payload={...payload,id:entry.id};
  if(importModule==='dda'&&payload.source_status){const existing=exactDdaReimportMatch(payload,dda);if(existing)entry.updateId=existing.id;}
  entry.warnings=[...entry.warnings,...importedDdaWarnings(entry.payload,[...dda,...importRows.filter(r=>r.payload).map(r=>r.payload)])];entry.suspects=R().suspects(payload,[...existing(),...importRows.filter(r=>r.payload).map(r=>({...r.payload,module:'Este arquivo'}))],data.suppliers);
- const peers=[...importPeers(importModule,data.payables,dda),...importRows.filter(r=>r.payload).map(r=>r.payload)];const blocks=R().blocking(payload,peers,data.suppliers);if(blocks.length&&!entry.updateId)entry.error=duplicateMessage(blocks);}catch(e){entry.error=e.message;}importRows.push(entry);}$('import-info').textContent=importFile+' · '+sheetName+' · '+importRows.length+' linhas. Nenhuma foi salva. Confira fornecedor, valor, data e documento. Duplicidades e divergências exigem confirmação individual.';renderImportReview();$('import-dialog').showModal();}catch(e){failure(e);}}
-function renderImportReview(){if(hotelImport)return renderHotelImportReview();const container=$('import-review');container.replaceChildren();for(const r of importRows){const box=el('section',undefined,'card');const label=el('label','Linha '+r.line+' · '+(r.payload?.title||'Erro de leitura')),select=el('input');select.type='checkbox';select.checked=r.selected;select.disabled=!!r.error;select.onchange=()=>{r.selected=select.checked;};label.prepend(select);label.className='read-note-choice';box.append(label);if(r.error)box.append(el('p',r.error,'hint'));else{if(r.updateId)box.append(el('p','Título DDA já cadastrado: será atualizada somente a situação informada pelo arquivo, sem criar nova cobrança ou alterar baixas.','hsn96-import-status'));if(r.payload?.source_status)box.append(el('p','Status informado pelo arquivo: '+({paid:'PAGO',scheduled:'AGENDADO',open:'EM ABERTO'}[r.payload.source_status])+'. Não confirma baixa no HSN.','hsn96-import-status'));box.append(el('p',(r.payload.supplier_name||supplierOf(r.payload)?.legal_name||'')+' · '+D().br(r.payload.due_date)+' · '+money(r.payload.actual_amount??r.payload.amount??r.payload.estimated_amount)));if(r.warnings.length){box.append(el('p','Pontos a verificar: '+r.warnings.join(' | '),'hint'));}if(r.suspects.length||r.warnings.length){if(r.suspects.length)box.append(el('p','Possíveis duplicidades:\n'+r.suspects.map(h=>h.record.module+' · '+h.record.title+' · '+h.reasons.join(', ')).join('\n'),'hint'));const ackLabel=el('label','Conferi os alertas e autorizo incluir esta linha'),ack=el('input');ack.type='checkbox';ack.checked=r.ack;ack.onchange=()=>{r.ack=ack.checked;};ackLabel.prepend(ack);ackLabel.className='read-note-choice';box.append(ackLabel);}}container.append(box);} }
+ const peers=[...importPeers(importModule,data.payables,dda),...importRows.filter(r=>r.payload).map(r=>r.payload)];const blocks=R().blocking(payload,peers,data.suppliers);if(blocks.length&&!entry.updateId)entry.error=duplicateMessage(blocks);}catch(e){entry.error=e.message;}importRows.push(entry);}$('import-info').textContent=importFile+' · '+sheetName+' · '+importRows.length+' linhas. Nenhuma foi salva. Confira fornecedor, valor, data e documento. No DDA, use a seleção em lote para os títulos aptos. Duplicidades e divergências exigem confirmação individual.';renderImportReview();$('import-dialog').showModal();}catch(e){failure(e);}}
+// Somente avisos informativos conhecidos podem ser conferidos juntos. Alertas
+// novos, divergências e suspeitas de duplicidade continuam na revisão individual.
+function ddaBulkEligible(row){
+ return !!row.payload&&!row.error&&!row.suspects.length&&row.warnings.every(w=>
+  w==='Sem linha digitável nem número do documento. Confira o boleto.'||
+  (w.startsWith('Situação do arquivo não reconhecida: ')&&w.endsWith('; não será considerada paga nem agendada.')));
+}
+function ddaImportTotal(rows){
+ return rows.reduce((sum,r)=>sum+Math.round(Number(r.payload.amount)*100),0)/100;
+}
+function renderImportReview(){
+ if(hotelImport)return renderHotelImportReview();
+ const container=$('import-review');container.replaceChildren();
+ let refreshSelection=()=>{};
+ if(importModule==='dda'){
+  const toolbar=el('section',undefined,'card dda-import-bulk');
+  const summary=el('p');summary.id='dda-import-selection';summary.setAttribute('role','status');summary.setAttribute('aria-live','polite');
+  const actions=el('div',undefined,'actions');
+  const eligible=importRows.filter(ddaBulkEligible);
+  const bulk=button('Selecionar aptos em lote',()=>{
+   const pending=eligible.filter(r=>r.warnings.length&&!r.ack);
+   if(pending.length){
+    const warnings=new Map();for(const r of pending)for(const warning of r.warnings)warnings.set(warning,(warnings.get(warning)||0)+1);
+    const message='Conferir avisos de '+pending.length+' título(s), no total de '+money(ddaImportTotal(pending))+'?\n\n'+
+     [...warnings].map(([warning,count])=>count+' linha(s): '+warning).join('\n')+
+     '\n\nAo confirmar, esses avisos serão aceitos e os '+eligible.length+' títulos aptos serão selecionados. Duplicidades, divergências e erros ficam fora do lote. Nada será salvo ou pago nesta etapa.';
+    if(!confirm(message))return;
+   }
+   for(const r of eligible){r.selected=true;if(r.warnings.length)r.ack=true;}
+   renderImportReview();
+  });
+  const clear=button('Desmarcar todos',()=>{for(const r of importRows){r.selected=false;r.ack=false;}renderImportReview();});
+  const commit=button('Importar selecionados',confirmImport,'');
+  refreshSelection=()=>{
+   const selected=importRows.filter(r=>r.selected&&!r.error);
+   const errors=importRows.filter(r=>r.error).length;
+   const individual=importRows.filter(r=>!r.error&&!ddaBulkEligible(r)).length;
+   const unacknowledged=selected.filter(r=>(r.warnings.length||r.suspects.length)&&!r.ack).length;
+   summary.textContent=selected.length+' de '+importRows.length+' selecionados · '+money(ddaImportTotal(selected))+
+    ' · '+individual+' para conferência individual · '+errors+' com erro'+
+    (unacknowledged?' · '+unacknowledged+' selecionado(s) com alerta pendente':'');
+   bulk.disabled=!eligible.some(r=>!r.selected||(r.warnings.length&&!r.ack));
+   clear.disabled=!importRows.some(r=>r.selected||r.ack);
+   commit.textContent='Importar '+selected.length+' selecionados';
+   commit.disabled=!selected.length||!!unacknowledged;
+  };
+  actions.append(bulk,clear,commit);toolbar.append(el('h3','Seleção do DDA'),summary,actions,
+   el('p','Confira o arquivo e selecione os títulos aptos de uma vez. Avisos informativos podem ser aceitos juntos; duplicidades e divergências exigem conferência individual. Depois, use “Importar selecionados” para confirmar o lote.','hint'));
+  container.append(toolbar);
+ }
+ for(const r of importRows){
+  const box=el('section',undefined,'card');
+  const label=el('label','Linha '+r.line+' · '+(r.payload?.title||'Erro de leitura')),select=el('input');
+  select.type='checkbox';select.checked=r.selected;select.disabled=!!r.error;
+  select.onchange=()=>{r.selected=select.checked;refreshSelection();};
+  label.prepend(select);label.className='read-note-choice';box.append(label);
+  if(r.error)box.append(el('p',r.error,'hint'));
+  else{
+   if(r.updateId)box.append(el('p','Título DDA já cadastrado: será atualizada somente a situação informada pelo arquivo, sem criar nova cobrança ou alterar baixas.','hsn96-import-status'));
+   if(r.payload?.source_status)box.append(el('p','Status informado pelo arquivo: '+({paid:'PAGO',scheduled:'AGENDADO',open:'EM ABERTO'}[r.payload.source_status])+'. Não confirma baixa no HSN.','hsn96-import-status'));
+   box.append(el('p',(r.payload.supplier_name||supplierOf(r.payload)?.legal_name||'')+' · '+D().br(r.payload.due_date)+' · '+money(r.payload.actual_amount??r.payload.amount??r.payload.estimated_amount)));
+   if(r.warnings.length)box.append(el('p','Pontos a verificar: '+r.warnings.join(' | '),'hint'));
+   if(r.suspects.length||r.warnings.length){
+    if(r.suspects.length)box.append(el('p','Possíveis duplicidades:\n'+r.suspects.map(h=>h.record.module+' · '+h.record.title+' · '+h.reasons.join(', ')).join('\n'),'hint'));
+    const ackLabel=el('label','Conferi os alertas e autorizo incluir esta linha'),ack=el('input');
+    ack.type='checkbox';ack.checked=r.ack;ack.onchange=()=>{r.ack=ack.checked;refreshSelection();};
+    ackLabel.prepend(ack);ackLabel.className='read-note-choice';box.append(ackLabel);
+   }
+  }
+  container.append(box);
+ }
+ refreshSelection();
+}
 async function confirmImport(){if(hotelImport)return confirmHotelPaymentsImport();await operation(async()=>{const chosen=importRows.filter(r=>r.selected&&!r.error);if(!chosen.length)throw Error('Marque ao menos uma linha válida.');
  if(importModule==='dda'&&chosen.some(r=>r.payload?.source_status)){const probe=await db.from('dda_charges').select('source_status').limit(1);if(probe.error)throw Error('Para guardar situação paga/agendada informada no arquivo, execute primeiro sql/HSN-9-6-DDA-situacao-origem.sql no Supabase. Nenhum dado foi importado.');}
  if(chosen.some(r=>(r.suspects.length||r.warnings.length)&&!r.ack))throw Error('Confira cada alerta do DDA ou desmarque a linha.');const table=importModule==='dda'?'dda_charges':'payables';const [freshPayables,freshDda]=await Promise.all([HSN_FINANCE.all('payables'),HSN_FINANCE.all('dda_charges')]);const current=[...freshPayables.map(r=>({...r,module:'Contas'})),...freshDda.map(r=>({...r,module:'DDA'}))];const currentIds=new Set((importModule==='dda'?freshDda:freshPayables).map(r=>r.id));const pending=chosen.filter(r=>!r.updateId&&!currentIds.has(r.id));const updates=chosen.filter(r=>!!r.updateId);

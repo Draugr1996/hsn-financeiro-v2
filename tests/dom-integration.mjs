@@ -81,5 +81,49 @@ await test('Conciliação atual cruza DDA e seleciona apenas a conta identificad
  await pg.query(`insert into hsn10_bank_transactions(owner_id,account,bank_reference,transaction_date,amount,description,settled,source_file) values($1,'SICOOB-TESTE','DEBITO-123456789','2026-11-10',-1000,'Boleto documento 123456 CNPJ 12345678000195',true,'teste.ofx')`,[owner]);
  await nav('receipts_reconciliation');assert.ok(text().includes('DDA e conta identificados'));const row=[...w.document.querySelectorAll('.hsn10-table tr')].find(r=>r.textContent.includes('DEBITO-123456789'));assert.equal(row.querySelector('select').value,id);row.querySelector('button').click();await wait(()=>dlg()?.textContent.includes('Registrar pagamento confirmado'),'baixa sugerida');assert.equal((await pg.query('select paid_amount from payables where id=$1',[id])).rows[0].paid_amount,'0.00');button('Fechar',dlg()).click();
 });
+
+await test('DDA seleciona aptos em lote, agrupa avisos e mantém divergências fora',async()=>{
+ let raw='0019'+'0'+'0000'+'0000099900'+'1234567890123456789012345';
+ const barcode=raw.slice(0,4)+w.HSN_BOLETOS.bank11(raw.slice(0,4)+raw.slice(5))+raw.slice(5);
+ assert.equal(w.HSN_BOLETOS.read(barcode).amount,999);
+ const matrix=[['descricao','fornecedor','cnpj_cpf','valor','vencimento','numero_documento','codigo_barras','situacao'],
+  ['Limpeza lote','Fornecedor Limpeza','','101,01','20/11/2026','LOTE-900001','',''],
+  ['Manutenção lote','Oficina Motores','','202,02','21/11/2026','','',''],
+  ['Alimentos lote','Distribuidora Alimentos','','303,03','22/11/2026','LOTE-900003','','Em análise'],
+  ['Cópia limpeza','Fornecedor Limpeza','','101,01','20/11/2026','LOTE-900001','',''],
+  ['Valor divergente','Energia Divergente','','404,04','23/11/2026','LOTE-900005',barcode,''],
+  ['Data inválida','Fornecedor Inválido','','505,05','31/02/2026','LOTE-900006','',''],
+  ['Possível repetição','Fornecedor Limpeza','','101,01','20/11/2026','LOTE-900007','','']];
+ w.XLSX={read:()=>({SheetNames:['DDA'],Sheets:{DDA:{}}}),utils:{sheet_to_json:()=>matrix},SSF:{parse_date_code:()=>null}};
+ async function prepare(){
+  w.eval("view='imports';load();");await wait(()=>w.document.querySelector('[name=import_module]'),'importador');
+  const module=w.document.querySelector('[name=import_module]');module.value='dda';module.dispatchEvent(new w.Event('change'));
+  const input=w.document.querySelector('#import-file');Object.defineProperty(input,'files',{value:[new w.File(['fixture'],'dda-lote.xlsx')],configurable:true});
+  button('Ler planilha').click();await wait(()=>[...w.document.querySelectorAll('#import-mapping button')].some(b=>b.textContent==='Preparar revisão'),'mapeamento DDA');
+  button('Preparar revisão').click();await wait(()=>w.document.querySelector('#import-dialog').open,'revisão DDA');
+ }
+ await prepare();
+ const review=()=>w.document.querySelector('#import-review');
+ const rows=()=>[...review().querySelectorAll('section.card')].filter(r=>!r.classList.contains('dda-import-bulk'));
+ const selected=()=>rows().filter(r=>r.querySelector('input').checked);
+ const before=(await pg.query('select count(*)::int n from dda_charges')).rows[0].n;
+ const importsBefore=calls.filter(n=>n==='hsn10_commit_import').length;
+ assert.equal(selected().length,0);assert.equal(button('Importar 0 selecionados',review()).disabled,true);let prompts=[];w.confirm=message=>{prompts.push(message);return false;};
+ button('Selecionar aptos em lote',review()).click();assert.equal(prompts.length,1);assert.ok(prompts[0].includes('2 título(s)'));assert.ok(prompts[0].includes('Sem linha digitável'));assert.ok(prompts[0].includes('não será considerada paga nem agendada'));assert.equal(selected().length,0);assert.equal(review().querySelectorAll('input:checked').length,0);
+ w.confirm=message=>{prompts.push(message);return true;};button('Selecionar aptos em lote',review()).click();
+ assert.equal(selected().length,3);assert.ok(w.document.querySelector('#dda-import-selection').textContent.includes('606,06'));assert.ok(w.document.querySelector('#dda-import-selection').textContent.includes('2 para conferência individual · 2 com erro'));
+ for(const r of rows().slice(3))assert.equal(r.querySelector('input').checked,false,r.textContent);
+ assert.equal(rows()[1].querySelectorAll('input:checked').length,2);assert.equal(rows()[2].querySelectorAll('input:checked').length,2);
+ const first=rows()[0].querySelector('input');first.checked=false;first.dispatchEvent(new w.Event('change'));assert.ok(w.document.querySelector('#dda-import-selection').textContent.includes('505,05'));
+ button('Desmarcar todos',review()).click();assert.equal(review().querySelectorAll('input:checked').length,0);
+ button('Selecionar aptos em lote',review()).click();assert.equal(selected().length,3);
+ assert.equal(calls.filter(n=>n==='hsn10_commit_import').length,importsBefore);assert.equal((await pg.query('select count(*)::int n from dda_charges')).rows[0].n,before);
+ button('Importar 3 selecionados',review()).click();await wait(()=>dlg()?.textContent.includes('Resultado da importação'),'resultado lote DDA');
+ assert.ok(dlg().textContent.includes('3 importadas'));assert.equal((await pg.query('select count(*)::int n from dda_charges')).rows[0].n,before+3);
+ assert.equal((await pg.query("select count(*)::int n from dda_charges where title in ('Limpeza lote','Manutenção lote','Alimentos lote') and reviewed=true")).rows[0].n,0);
+ button('Fechar',dlg()).click();await wait(()=>!w.document.querySelector('#import-dialog').open,'revisão fechada');
+ await prepare();assert.equal(button('Selecionar aptos em lote',review()).disabled,true);assert.equal(selected().length,0);assert.equal((await pg.query('select count(*)::int n from dda_charges')).rows[0].n,before+3);
+ w.document.querySelector('#import-close').click();w.confirm=()=>true;
+});
 assert.deepEqual(logs,[]);const result={passed:passed.length,tests:passed,errors:logs,environment:'JSDOM + PGlite; não é verificação visual de navegador'};fs.writeFileSync(path.join(root,'docs/dom-results.json'),JSON.stringify(result,null,2));
 }finally{w.close();await pg.close();}

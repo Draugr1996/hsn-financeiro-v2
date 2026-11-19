@@ -1,7 +1,13 @@
 {
-  "passed": 9,
+  "passed": 19,
   "tests": [
     "Inicialização e painel com saldo previsto",
+    "Menus por setor preservam todos os destinos sem controles operacionais em configurações",
+    "Submenu acompanha o setor atual sem abrir os demais",
+    "Expandir ferramentas não muda a tela e Escape devolve o foco",
+    "Atalho abre ficha agrupada sem criar nova dívida antes de salvar",
+    "Faturamento abre envio sem anexos e prepara mensagem sem afirmar documentos anexados",
+    "Período e empresa lembrados por tela sem contaminar painel",
     "Formulário registra recebimento parcial sem alterar dívida",
     "Histórico abre e estorno mantém trilha",
     "Faturamento vinculado confirma envio sem quitar conta",
@@ -9,7 +15,11 @@
     "Importação Sicoob apresenta erros por linha e preserva dívida",
     "Enviar e reenviar cobrança usa o mesmo título sem criar dívida",
     "Contas a pagar carregam após navegação sem CSS residual",
-    "Histórico financeiro reúne baixas, estornos e importações"
+    "Histórico financeiro reúne baixas, estornos e importações",
+    "DDA abre conversão sem tipos e permite cadastrar tipo na mesma ficha",
+    "Fornecedor não localizado pode ser cadastrado e selecionado sem sair da conversão",
+    "Conciliação atual cruza DDA e seleciona apenas a conta identificada",
+    "DDA seleciona aptos em lote, agrupa avisos e mantém divergências fora"
   ],
   "errors": [],
   "environment": "JSDOM + PGlite; não é verificação visual de navegador"

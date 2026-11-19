@@ -11,3 +11,9 @@ O sistema foi reorganizado para uso individual. A cópia anterior permanece na b
 - Alterações de apresentação e navegação. As confirmações de baixa, estorno, importação e envio continuam nas rotinas existentes.
 
 Validação: testes de regras financeiras, SQL, isolamento, recuperação de senha e integração DOM, incluindo menu, abertura da ficha sem salvar dívida e filtros independentes por tela. O teste automatizado com Chromium local encontrou uma restrição de socket do ambiente; a conferência visual é feita no navegador compartilhado.
+
+## Importação de DDA em lote
+
+Na prévia de importação do DDA, use **Selecionar aptos em lote** para reunir os títulos válidos sem suspeitas ou divergências. Avisos informativos conhecidos podem ser aceitos em uma única confirmação, com a quantidade, o total e os avisos agrupados. Erros permanecem bloqueados; possíveis duplicidades e divergências continuam na conferência individual.
+
+O contador atualiza a quantidade e o valor da seleção. É possível ajustar cada linha ou usar **Desmarcar todos**, que também desfaz o aceite dos avisos. O botão **Importar selecionados** fica no topo da revisão. A seleção não grava dados: a confirmação final revalida o banco e mantém os controles contra duplicidade. Importar DDA não confirma pagamento nem agenda operações bancárias.
