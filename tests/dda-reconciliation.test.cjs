@@ -16,3 +16,6 @@ test('Dois documentos compatíveis ou dois débitos para a mesma conta não dese
 test('Situação paga no arquivo continua revisão até vincular baixa no HSN',()=>{const result=ctx.window.HSN_DDA96.classify({...dda,converted_payable_id:null,source_status:'paid'},{payables:[],suppliers:[]});assert.equal(result.key,'review');});
 
 test('Documento que coincide com parte do CNPJ não identifica o boleto',()=>{assert.equal(match({...tx,description:'Pagamento documento 555555 CNPJ 12.345.678/0001-95',bank_reference:'BANK-555555-2026'}).key,'review');});
+
+test('Fornecedor é identificado pelo CNPJ, com máscara e nome diferente',()=>{const r=ctx.window.HSN_DDA96.resolveSupplier({tax_id:'12.345.678/0001-95',supplier_name:'Nome no banco',supplier_id:'errado'},[ownerSupplier]);assert.equal(r.key,'matched');assert.equal(r.id,'s');});
+test('CNPJ ausente ou duplicado não usa fornecedor homônimo automaticamente',()=>{const resolve=ctx.window.HSN_DDA96.resolveSupplier;assert.equal(resolve({tax_id:'98765432000199',supplier_name:ownerSupplier.legal_name},[ownerSupplier]).id,'');assert.equal(resolve({tax_id:ownerSupplier.tax_id},[ownerSupplier,{...ownerSupplier,id:'s2'}]).key,'ambiguous');assert.equal(resolve({tax_id:'00000000000000'},[ownerSupplier]).key,'invalid');});

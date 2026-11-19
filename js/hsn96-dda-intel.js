@@ -56,5 +56,16 @@
   if(reported==='open')return {key:'open',label:'Em aberto',note:'Situação aberta indicada na planilha DDA; verifique o vencimento.',basis:'Arquivo DDA',source:reported};
   return {key:'open',label:'Sem baixa identificada',note:'O DDA não contém prova de pagamento ou agendamento. Cruze com a conta e o extrato.',basis:'Sem status bancário',source:''};
  }
- root.HSN_DDA96={sourceStatus,classify,uniqueProposedMatch};
+ function resolveSupplier(charge,suppliers=[]){
+  const tax=digits(charge.tax_id);
+  if(tax){
+   if(![11,14].includes(tax.length)||/^(\d)\1+$/.test(tax)||/[A-Za-z]/.test(String(charge.tax_id)))return {key:'invalid',id:'',label:'CPF/CNPJ incompleto no título. Confira os dados antes de cadastrar.'};
+   const matches=suppliers.filter(s=>digits(s.tax_id)===tax);
+   if(matches.length===1)return {key:'matched',id:matches[0].id,label:'Fornecedor identificado automaticamente pelo CPF/CNPJ do título.'};
+   if(matches.length>1)return {key:'ambiguous',id:'',label:'Mais de um fornecedor possui este CPF/CNPJ. Confira os cadastros antes de converter.'};
+   return {key:'missing',id:'',label:'Fornecedor não localizado pelo CPF/CNPJ. Cadastre-o abaixo sem sair desta tela.'};
+  }
+  return {key:'manual',id:suppliers.some(s=>s.id===charge.supplier_id)?charge.supplier_id:'',label:'Título sem CPF/CNPJ: selecione um fornecedor ou informe os dados no cadastro abaixo.'};
+ }
+ root.HSN_DDA96={resolveSupplier,sourceStatus,classify,uniqueProposedMatch};
 })(window);
